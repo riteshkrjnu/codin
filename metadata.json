@@ -1,0 +1,6 @@
+{
+  "name": "Council for Diversity and Innovation",
+  "description": "The Council for Diversity and Innovation (CoDIN) is a hybrid research-and-policy organisation that convenes academics, practitioners, and policymakers to embed diversity principles across sectors.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

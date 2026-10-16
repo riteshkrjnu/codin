@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Event } from './types';
+import { Event } from './types.ts';
 
 export const w2mResidentialOoty2025: Event = {
   slug: "w2m-residential-ooty-2025",

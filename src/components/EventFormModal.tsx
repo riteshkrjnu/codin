@@ -6,10 +6,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Check, AlertCircle, Clock, Calendar, MapPin, 
-  Users, Mail, Megaphone, Plus, Trash2, Edit2, Layout, HelpCircle
+  Users, Mail, Megaphone, Plus, Trash2, Edit2, Layout, HelpCircle,
+  Coins, Ticket, ArrowRight, ShieldCheck, DollarSign
 } from 'lucide-react';
 import { renderMarkdown } from '../lib/utils';
 import { MarkdownMediaHelper } from './MarkdownMediaHelper';
+import { parseFeeAmount, formatCurrencyFee, extractRegistrationFees } from '../lib/eventFees';
 
 export function getGoogleDriveEmbedUrl(url: string | undefined): string | null {
   if (!url) return null;
@@ -124,6 +126,15 @@ export default function EventFormModal({
   const [paymentMarkdown, setPaymentMarkdown] = useState('');
   const [paymentGatewayLink, setPaymentGatewayLink] = useState('');
 
+  // Primary Registration Fee States
+  const [eventFee, setEventFee] = useState<number>(0);
+  const [eventFeeInput, setEventFeeInput] = useState<string>('0');
+  const [isFreeEvent, setIsFreeEvent] = useState<boolean>(true);
+
+  // Support Office // RSVP States
+  const [supportOfficeText, setSupportOfficeText] = useState('');
+  const [supportOfficeEmail, setSupportOfficeEmail] = useState('');
+
   // Customizable subPages / Dossier Tab Chapters
   const [customPages, setCustomPages] = useState<any[]>([
     {
@@ -231,6 +242,159 @@ export default function EventFormModal({
   const [regFeeValue, setRegFeeValue] = useState('');
   const [draftFeesList, setDraftFeesList] = useState<any[]>([]);
   const [editingFeesIdx, setEditingFeesIdx] = useState<number | null>(null);
+
+  // Helper to synchronize registration fee changes directly into customPages
+  const syncCustomPagesWithFees = (updatedFees: any[]) => {
+    setCustomPages(prev => prev.map(p => {
+      if (p.type === 'registration') {
+        return {
+          ...p,
+          content: {
+            ...(p.content || {}),
+            fees: updatedFees
+          }
+        };
+      }
+      return p;
+    }));
+  };
+
+  // Base fee input handler with auto-reconciliation
+  const handleBaseFeeChange = (val: string) => {
+    setEventFeeInput(val);
+    const parsed = parseFeeAmount(val);
+    setEventFee(parsed);
+    setIsFreeEvent(parsed === 0);
+
+    // Reconcile with draftFeesList:
+    // If no custom tiers or only 1 standard tier exists, keep the tier reconciled with this base fee!
+    if (draftFeesList.length <= 1) {
+      if (parsed > 0) {
+        const tierName = draftFeesList[0]?.category || 'Standard Registration';
+        const updated = [{ category: tierName, fee: `₹ ${parsed.toLocaleString('en-IN')}` }];
+        setDraftFeesList(updated);
+        syncCustomPagesWithFees(updated);
+      } else if (parsed === 0 && draftFeesList.length === 1) {
+        const tierName = draftFeesList[0]?.category || 'Standard Registration';
+        const updated = [{ category: tierName, fee: 'Complimentary / Free' }];
+        setDraftFeesList(updated);
+        syncCustomPagesWithFees(updated);
+      }
+    }
+  };
+
+  // Mode toggle between Free and Paid
+  const handleToggleFree = (free: boolean) => {
+    setIsFreeEvent(free);
+    if (free) {
+      setEventFee(0);
+      setEventFeeInput('0');
+      if (draftFeesList.length <= 1) {
+        const tierName = draftFeesList[0]?.category || 'Standard Registration';
+        const updated = [{ category: tierName, fee: 'Complimentary / Free' }];
+        setDraftFeesList(updated);
+        syncCustomPagesWithFees(updated);
+      }
+    } else {
+      if (eventFee === 0) {
+        // If tiers already exist, pick from existing positive tiers:
+        const positiveAmounts = draftFeesList.map(t => parseFeeAmount(t.fee)).filter(a => a > 0);
+        const defaultAmount = positiveAmounts.length > 0 ? Math.min(...positiveAmounts) : 2500;
+        setEventFee(defaultAmount);
+        setEventFeeInput(String(defaultAmount));
+        if (draftFeesList.length <= 1) {
+          const tierName = draftFeesList[0]?.category || 'Standard Registration';
+          const updated = [{ category: tierName, fee: `₹ ${defaultAmount.toLocaleString('en-IN')}` }];
+          setDraftFeesList(updated);
+          syncCustomPagesWithFees(updated);
+        }
+      }
+    }
+  };
+
+  // Unified fee tier creation/update that updates draftFeesList, customPages, and reconciles eventFee
+  const handleAddOrSaveFeeTier = () => {
+    if (!regFeeCategory.trim() || !regFeeValue.trim()) {
+      alert('Fee Category and Pricing input are required.');
+      return;
+    }
+    const record = { category: regFeeCategory.trim(), fee: regFeeValue.trim() };
+    let updatedTiers: any[];
+    if (editingFeesIdx !== null) {
+      const copy = [...draftFeesList];
+      copy[editingFeesIdx] = record;
+      updatedTiers = copy;
+      setEditingFeesIdx(null);
+    } else {
+      updatedTiers = [...draftFeesList, record];
+    }
+    setDraftFeesList(updatedTiers);
+    syncCustomPagesWithFees(updatedTiers);
+    setRegFeeCategory('');
+    setRegFeeValue('');
+
+    // Reconcile eventFee from tiers:
+    const positiveAmounts = updatedTiers.map(t => parseFeeAmount(t.fee)).filter(a => a > 0);
+    if (positiveAmounts.length > 0) {
+      if (eventFee === 0 || isFreeEvent) {
+        const minAmount = Math.min(...positiveAmounts);
+        setEventFee(minAmount);
+        setEventFeeInput(String(minAmount));
+        setIsFreeEvent(false);
+      }
+    } else if (updatedTiers.length > 0 && positiveAmounts.length === 0) {
+      setEventFee(0);
+      setEventFeeInput('0');
+      setIsFreeEvent(true);
+    }
+  };
+
+  // Unified fee tier delete that updates draftFeesList, customPages, and reconciles eventFee
+  const handleDeleteFeeTier = (idx: number) => {
+    const updatedTiers = draftFeesList.filter((_, i) => i !== idx);
+    setDraftFeesList(updatedTiers);
+    syncCustomPagesWithFees(updatedTiers);
+    if (editingFeesIdx === idx) {
+      setEditingFeesIdx(null);
+      setRegFeeCategory('');
+      setRegFeeValue('');
+    }
+    const positiveAmounts = updatedTiers.map(t => parseFeeAmount(t.fee)).filter(a => a > 0);
+    if (positiveAmounts.length > 0) {
+      if (eventFee === 0 || isFreeEvent) {
+        const minAmount = Math.min(...positiveAmounts);
+        setEventFee(minAmount);
+        setEventFeeInput(String(minAmount));
+        setIsFreeEvent(false);
+      }
+    } else {
+      setEventFee(0);
+      setEventFeeInput('0');
+      setIsFreeEvent(true);
+    }
+  };
+
+  // Add / jump to registration tab in customPages
+  const handleEnsureRegistrationTabInDossier = () => {
+    const hasReg = customPages.some(p => p.type === 'registration');
+    if (!hasReg) {
+      const newRegPage = {
+        title: 'Registration & Fees',
+        slug: 'registration',
+        icon: 'CreditCard',
+        type: 'registration',
+        content: {
+          deadline: regDeadlineText || '',
+          fees: [...draftFeesList],
+          instructions: draftInstructionsList.length > 0 ? draftInstructionsList : ['Please complete online registration to confirm your seat.']
+        }
+      };
+      setCustomPages(prev => [...prev, newRegPage]);
+      alert('Registration & Fees chapter added to Dossier Pages! You can review or reorder it in tab 5.');
+    } else {
+      alert('A Registration chapter already exists in Dossier Pages and is automatically synced with these fee schedules.');
+    }
+  };
 
   // RSVP compliance list (Now with markdown support)
   const [regInstructionInput, setRegInstructionInput] = useState('');
@@ -359,11 +523,63 @@ export default function EventFormModal({
         setPaymentGatewayLink(eventToEdit.registrationCard.paymentGatewayLink || '');
       }
 
+      setSupportOfficeText(eventToEdit.supportOfficeText || '');
+      setSupportOfficeEmail(eventToEdit.supportOfficeEmail || '');
+
+      // Reconcile registration fee from explicit fee, registrationCard fee, or subPages registration chapter
+      let existingFees = extractRegistrationFees(eventToEdit);
+      let initialFee = 0;
+      if (eventToEdit.fee !== undefined && Number(eventToEdit.fee) > 0) {
+        initialFee = Number(eventToEdit.fee);
+      } else if (eventToEdit.registrationCard?.fee !== undefined && Number(eventToEdit.registrationCard.fee) > 0) {
+        initialFee = Number(eventToEdit.registrationCard.fee);
+      } else if (existingFees.length > 0) {
+        // Automatically pick from Registration Fee section!
+        const positiveAmounts = existingFees.map((f: any) => parseFeeAmount(f.fee)).filter((a: number) => a > 0);
+        if (positiveAmounts.length > 0) {
+          initialFee = Math.min(...positiveAmounts);
+        }
+      }
+
+      // If positive fee exists but no tiers array was provided, synthesize standard tier so it's never lost
+      if (initialFee > 0 && existingFees.length === 0) {
+        existingFees = [{ category: 'Standard Registration', fee: `₹ ${initialFee.toLocaleString('en-IN')}`, numericAmount: initialFee }];
+      }
+
+      setEventFee(initialFee);
+      setEventFeeInput(initialFee > 0 ? String(initialFee) : '0');
+      setIsFreeEvent(initialFee === 0 && (!existingFees.length || existingFees.every((f: any) => parseFeeAmount(f.fee) === 0)));
+      setDraftFeesList(existingFees);
+
+      // Extract registration tab instructions and deadline
+      const regTab = (eventToEdit.subPages || []).find((p: any) => p && p.type === 'registration');
+      if (regTab && regTab.content) {
+        setRegDeadlineText(regTab.content.deadline || '');
+        if (Array.isArray(regTab.content.instructions) && regTab.content.instructions.length > 0) {
+          setDraftInstructionsList(regTab.content.instructions);
+        }
+      }
+
       if (eventToEdit.subPages && eventToEdit.subPages.length > 0) {
-        setCustomPages(eventToEdit.subPages);
+        const syncedPages = eventToEdit.subPages.map((p: any) => {
+          if (p && p.type === 'registration') {
+            const feesToUse = (Array.isArray(p.content?.fees) && p.content.fees.length > 0)
+              ? p.content.fees
+              : (existingFees.length > 0 ? existingFees : []);
+            return {
+              ...p,
+              content: {
+                ...(p.content || {}),
+                fees: feesToUse
+              }
+            };
+          }
+          return p;
+        });
+        setCustomPages(syncedPages);
         setActiveSubTabSlug(eventToEdit.subPages[0]?.slug || 'overview');
       } else {
-        setCustomPages([
+        const initialPages: any[] = [
           {
             slug: 'overview',
             title: 'Active Briefing',
@@ -371,7 +587,21 @@ export default function EventFormModal({
             type: 'markdown',
             content: { teaser: '', markdown: '' }
           }
-        ]);
+        ];
+        if (existingFees.length > 0 || initialFee > 0) {
+          initialPages.push({
+            slug: 'registration',
+            title: 'Registration & Fees',
+            icon: 'CreditCard',
+            type: 'registration',
+            content: {
+              deadline: '',
+              fees: existingFees,
+              instructions: ['Please complete online registration to confirm your seat.']
+            }
+          });
+        }
+        setCustomPages(initialPages);
         setActiveSubTabSlug('overview');
       }
     } else {
@@ -401,6 +631,15 @@ export default function EventFormModal({
       setPaymentMsgChoice('markdown');
       setPaymentMarkdown('');
       setPaymentGatewayLink('');
+      setSupportOfficeText('');
+      setSupportOfficeEmail('');
+      setEventFee(0);
+      setEventFeeInput('0');
+      setIsFreeEvent(true);
+      setDraftFeesList([]);
+      setRegFeeCategory('');
+      setRegFeeValue('');
+      setEditingFeesIdx(null);
       setCustomPages([
         {
           slug: 'overview',
@@ -442,7 +681,10 @@ export default function EventFormModal({
       }
     } else if (cp.type === 'registration') {
       setRegDeadlineText(cp.content?.deadline || '');
-      setDraftFeesList(cp.content?.fees || []);
+      const tabFees = (Array.isArray(cp.content?.fees) && cp.content.fees.length > 0)
+        ? cp.content.fees
+        : (draftFeesList.length > 0 ? draftFeesList : extractRegistrationFees(eventToEdit));
+      setDraftFeesList(tabFees);
       setDraftInstructionsList(cp.content?.instructions || []);
     } else if (cp.type === 'list') {
       setDraftListList(cp.content || []);
@@ -499,6 +741,34 @@ export default function EventFormModal({
     }
   };
 
+  // Insert markdown link helper
+  const handleInsertLink = (textareaId: string, setter: (val: string) => void) => {
+    const textarea = document.getElementById(textareaId) as HTMLTextAreaElement;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selected = text.substring(start, end);
+    const defaultUrl = "https://example.com";
+    if (selected) {
+      const replacement = `[${selected}](${defaultUrl})`;
+      setter(text.substring(0, start) + replacement + text.substring(end));
+      setTimeout(() => {
+        textarea.focus();
+        const urlStart = start + selected.length + 3;
+        textarea.setSelectionRange(urlStart, urlStart + defaultUrl.length);
+      }, 50);
+    } else {
+      const defaultText = "Link text";
+      const replacement = `[${defaultText}](${defaultUrl})`;
+      setter(text.substring(0, start) + replacement + text.substring(end));
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + 1, start + 1 + defaultText.length);
+      }, 50);
+    }
+  };
+
   // Reusable markdown toolbar template
   const MarkdownToolbar = ({ textareaId, value, onChange }: { textareaId: string; value: string; onChange: (val: string) => void }) => {
     return (
@@ -511,6 +781,7 @@ export default function EventFormModal({
         <button type="button" onClick={() => handleInsertMarkdown(textareaId, '\n### ', '', 'Heading', onChange)} className="px-1.5 py-0.5 bg-white hover:bg-brand-acid text-[9px] font-mono border border-ink">H3</button>
         <button type="button" onClick={() => handleInsertMarkdown(textareaId, '\n- ', '', 'Bullet List Item', onChange)} className="px-1.5 py-0.5 bg-white hover:bg-brand-acid text-[9px] font-mono border border-ink uppercase">• Bullet</button>
         <button type="button" onClick={() => handleInsertMarkdown(textareaId, '\n1. ', '', 'Numbered List Item', onChange)} className="px-1.5 py-0.5 bg-white hover:bg-brand-acid text-[9px] font-mono border border-ink uppercase">1. List</button>
+        <button type="button" onClick={() => handleInsertLink(textareaId, onChange)} className="px-1.5 py-0.5 bg-white hover:bg-brand-acid text-[9px] font-mono font-bold border border-ink uppercase text-brand-blue">🔗 Link</button>
       </div>
     );
   };
@@ -686,9 +957,6 @@ export default function EventFormModal({
     setNewPageMarkdown('');
     setDraftDatesList([]);
     setDraftScheduleList([]);
-    setDraftFeesList([]);
-    setRegDeadlineText('');
-    setDraftInstructionsList([]);
     setDraftListList([]);
     setDraftLogisticsList([]);
     setDraftCommitteesList([]);
@@ -742,6 +1010,72 @@ export default function EventFormModal({
 
     const isCourseParam = isCourseProp || eventToEdit?.isCourse || finalType === 'W2M Residential Course' || finalType === 'Residential Course' || finalType === 'Residential';
 
+    // Reconcile final fee and tiers safely
+    let finalFee = isFreeEvent ? 0 : (Number(eventFee) || 0);
+
+    // Safeguard fees list so tiers and pricing are NEVER lost or overwritten with empty arrays
+    let effectiveFeesList = [...draftFeesList];
+    if (effectiveFeesList.length === 0) {
+      // Check if customPages registration tab has existing fees
+      const regTab = customPages.find(p => p.type === 'registration');
+      if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+        effectiveFeesList = regTab.content.fees;
+      } else if (eventToEdit?.registrationCard?.fees && Array.isArray(eventToEdit.registrationCard.fees) && eventToEdit.registrationCard.fees.length > 0) {
+        effectiveFeesList = eventToEdit.registrationCard.fees;
+      } else if (eventToEdit) {
+        const fallbackFees = extractRegistrationFees(eventToEdit);
+        if (fallbackFees.length > 0) {
+          effectiveFeesList = fallbackFees;
+        }
+      }
+      if (effectiveFeesList.length === 0 && finalFee > 0) {
+        effectiveFeesList = [{ category: 'Standard Registration', fee: `₹ ${finalFee.toLocaleString('en-IN')}`, numericAmount: finalFee }];
+      }
+    }
+
+    // If finalFee is 0 but we are not free and effectiveFeesList has positive amounts, reconcile finalFee
+    if (!isFreeEvent && finalFee === 0 && effectiveFeesList.length > 0) {
+      const positiveAmounts = effectiveFeesList.map((f: any) => parseFeeAmount(f.fee)).filter((a: number) => a > 0);
+      if (positiveAmounts.length > 0) {
+        finalFee = Math.min(...positiveAmounts);
+      }
+    }
+
+    // Synchronize customPages registration tab fees with effectiveFeesList
+    let finalSubPages = customPages.map(p => {
+      if (p.type === 'registration') {
+        const feesToUse = effectiveFeesList.length > 0 ? effectiveFeesList : (p.content?.fees && p.content.fees.length > 0 ? p.content.fees : []);
+        const instructionsToUse = (draftInstructionsList && draftInstructionsList.length > 0)
+          ? draftInstructionsList
+          : (p.content?.instructions && p.content.instructions.length > 0 ? p.content.instructions : ['Please complete online registration to confirm your seat.']);
+        return {
+          ...p,
+          content: {
+            ...(p.content || {}),
+            deadline: regDeadlineText.trim() || p.content?.deadline || '',
+            fees: feesToUse,
+            instructions: instructionsToUse
+          }
+        };
+      }
+      return p;
+    });
+
+    // If fee tiers or paid rates or registration tab is needed, ensure a Registration Dossier chapter exists
+    if (!finalSubPages.some(p => p.type === 'registration') && (effectiveFeesList.length > 0 || finalFee > 0 || isFreeEvent)) {
+      finalSubPages.push({
+        title: 'Registration & Fees',
+        slug: 'registration',
+        icon: 'CreditCard',
+        type: 'registration',
+        content: {
+          deadline: regDeadlineText.trim() || '',
+          fees: effectiveFeesList.length > 0 ? effectiveFeesList : [{ category: 'General Admission', fee: 'Complimentary / Free' }],
+          instructions: draftInstructionsList.length > 0 ? draftInstructionsList : ['Please complete online registration to confirm your seat.']
+        }
+      });
+    }
+
     const savedEventObj = {
       ...(eventToEdit || {}),
       title: eventTitle,
@@ -755,13 +1089,18 @@ export default function EventFormModal({
       description: eventDesc,
       longDescription: eventLongDesc || eventDesc,
       image: eventImage,
+      fee: finalFee,
+      isFree: isFreeEvent,
       associatedCentres: selectedCentres,
       associatedProjects: selectedProjects,
       associatedPeople: selectedPeople,
       collaborators: collaborators,
       sponsors: sponsors,
       presenters: draftPresenters,
+      supportOfficeText: supportOfficeText.trim(),
+      supportOfficeEmail: supportOfficeEmail.trim(),
       registrationCard: {
+        ...(eventToEdit?.registrationCard || {}),
         title: regTitle,
         description: regDesc,
         buttonText: regBtnText,
@@ -769,9 +1108,11 @@ export default function EventFormModal({
         highlights: regHighlights.split(',').map(h => h.trim()).filter(h => h.length > 0),
         paymentMsgChoice: paymentMsgChoice,
         paymentMarkdown: paymentMarkdown,
-        paymentGatewayLink: paymentGatewayLink
+        paymentGatewayLink: paymentGatewayLink,
+        fee: finalFee,
+        fees: effectiveFeesList
       },
-      subPages: customPages
+      subPages: finalSubPages
     };
 
     try {
@@ -962,8 +1303,223 @@ export default function EventFormModal({
           <div className="border border-ink p-6 mb-8 space-y-6 bg-paper/5 animate-fade-in">
             <h3 className="font-serif text-lg font-black font-bold text-ink">Admission Card &amp; Payment Configuration</h3>
             <p className="font-mono text-[9px] text-ink/50 uppercase leading-snug">
-              Configure details shown in the active admission registration sidebar, including the candidate fee instructions or payment sandbox links.
+              Configure details shown in the active admission registration sidebar, including the registration fee schedules or payment sandbox links.
             </p>
+
+            {/* ADMISSION & REGISTRATION FEE CONFIGURATION */}
+            <div className="border border-ink bg-white p-5 space-y-4 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ink/10 pb-3">
+                <div>
+                  <div className="font-mono text-[10px] font-black uppercase tracking-wider text-brand-orange flex items-center gap-1.5">
+                    <Coins className="w-3.5 h-3.5" />
+                    Registration Fee &amp; Admissions Pricing
+                  </div>
+                  <p className="font-mono text-[9px] text-ink/60 uppercase mt-0.5">
+                    Controls fee displayed on admission cards and reconciles seamlessly with the Registration Dossier chapter.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 text-[9px] font-mono font-bold uppercase border border-ink ${isFreeEvent ? 'bg-emerald-100 text-emerald-800' : 'bg-brand-acid text-ink'}`}>
+                    {isFreeEvent ? 'Free Admission' : `Paid: ₹${(Number(eventFee) || 0).toLocaleString('en-IN')}`}
+                  </span>
+                </div>
+              </div>
+
+              {/* Mode switch */}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={() => handleToggleFree(true)}
+                  className={`p-3 border-2 flex items-center justify-between cursor-pointer transition-all ${
+                    isFreeEvent
+                      ? 'border-ink bg-emerald-50 text-ink shadow-[2px_2px_0px_rgba(0,0,0,1)]'
+                      : 'border-ink/30 bg-paper/30 text-ink/60 hover:border-ink/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="radio" 
+                      name="feeMode" 
+                      checked={isFreeEvent} 
+                      onChange={() => handleToggleFree(true)}
+                      className="accent-brand-orange cursor-pointer"
+                    />
+                    <span className="font-mono text-xs font-black uppercase">Free Admission (Zero Cost)</span>
+                  </div>
+                  <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 bg-emerald-600 text-white font-bold">₹0</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleToggleFree(false)}
+                  className={`p-3 border-2 flex items-center justify-between cursor-pointer transition-all ${
+                    !isFreeEvent
+                      ? 'border-ink bg-amber-50 text-ink shadow-[2px_2px_0px_rgba(0,0,0,1)]'
+                      : 'border-ink/30 bg-paper/30 text-ink/60 hover:border-ink/60'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="radio" 
+                      name="feeMode" 
+                      checked={!isFreeEvent} 
+                      onChange={() => handleToggleFree(false)}
+                      className="accent-brand-orange cursor-pointer"
+                    />
+                    <span className="font-mono text-xs font-black uppercase">Paid Registration / Ticketed</span>
+                  </div>
+                  <span className="font-mono text-[9px] uppercase px-1.5 py-0.5 bg-brand-orange text-white font-bold">Ticketed</span>
+                </button>
+              </div>
+
+              {/* Base Fee Input (if paid) */}
+              {!isFreeEvent && (
+                <div className="grid sm:grid-cols-2 gap-4 p-4 border border-dashed border-ink bg-amber-50/50 animate-fade-in">
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-widest text-ink/70 mb-1.5 font-mono">
+                      Standard / Base Registration Fee (₹ INR)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-3 font-mono font-black text-ink/50 text-sm">₹</span>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 2500" 
+                        className="w-full p-2.5 pl-8 border border-ink bg-white font-mono text-sm font-bold focus:outline-none focus:border-brand-blue"
+                        value={eventFeeInput}
+                        onChange={e => handleBaseFeeChange(e.target.value)}
+                      />
+                    </div>
+                    <p className="text-[8px] font-mono text-ink/50 mt-1 uppercase">
+                      Primary rate shown on registration cards. Reconciles with the fee tiers below.
+                    </p>
+                  </div>
+                  <div className="flex flex-col justify-center border-t sm:border-t-0 sm:border-l border-ink/10 pt-3 sm:pt-0 sm:pl-4">
+                    <span className="font-mono text-[9px] uppercase text-ink/50 font-bold">Live Card Price Display</span>
+                    <span className="font-serif text-2xl font-black italic text-brand-orange mt-0.5">
+                      ₹{(Number(eventFee) || 0).toLocaleString('en-IN')} INR
+                    </span>
+                    <span className="font-mono text-[8px] text-ink/40 uppercase mt-0.5">
+                      {draftFeesList.length > 1 ? `(${draftFeesList.length} category rates configured)` : 'Single standard rate'}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Reconciled Registration Fee Categories / Tiers */}
+              <div className="border border-ink/40 p-4 bg-zinc-50 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="font-mono text-[9px] font-black uppercase tracking-wider text-ink block font-bold">
+                      Registration Fee Tiers / Category Pricing Schedules
+                    </span>
+                    <span className="font-mono text-[8px] text-ink/50 uppercase">
+                      Reconciled with Registration Tab in Dossier Pages ({draftFeesList.length} active categories)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleEnsureRegistrationTabInDossier}
+                      className="px-2 py-1 text-[8px] font-mono font-bold uppercase tracking-wider bg-white border border-ink hover:bg-zinc-100 cursor-pointer shadow-[1px_1px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
+                      title="Syncs this fee schedule to a public Dossier page"
+                    >
+                      {customPages.some(p => p.type === 'registration') ? '✓ Dossier Tab Active' : '+ Add to Dossier Tabs'}
+                    </button>
+                    <span className="font-mono text-[8px] uppercase px-2 py-0.5 bg-brand-blue/10 text-brand-blue border border-brand-blue/30 font-bold">
+                      ⚡ Auto-Synchronized
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tier Add / Edit Row */}
+                <div className="grid sm:grid-cols-12 gap-2 bg-white p-3 border border-ink/20">
+                  <div className="sm:col-span-5">
+                    <label className="block text-[8px] font-black uppercase mb-1 font-mono text-ink/60">Category Label</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Indian Academic Authors / Scholars" 
+                      className="w-full p-2 border border-ink bg-paper/20 focus:bg-white text-xs font-sans"
+                      value={regFeeCategory}
+                      onChange={e => setRegFeeCategory(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-4">
+                    <label className="block text-[8px] font-black uppercase mb-1 font-mono text-ink/60">Fee Schedule Amount</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. INR 2,500 or Complimentary" 
+                      className="w-full p-2 border border-ink bg-paper/20 focus:bg-white text-xs font-mono font-bold"
+                      value={regFeeValue}
+                      onChange={e => setRegFeeValue(e.target.value)}
+                    />
+                  </div>
+                  <div className="sm:col-span-3 flex items-end justify-end gap-1.5">
+                    {editingFeesIdx !== null && (
+                      <button 
+                        type="button" 
+                        onClick={() => { setEditingFeesIdx(null); setRegFeeCategory(''); setRegFeeValue(''); }}
+                        className="px-2.5 py-2 bg-white border border-ink text-[9px] font-mono font-bold uppercase hover:bg-zinc-100 cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={handleAddOrSaveFeeTier}
+                      className="w-full px-3 py-2 bg-brand-orange text-white text-[9px] font-mono font-bold uppercase border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-black transition-all cursor-pointer font-bold"
+                    >
+                      {editingFeesIdx !== null ? '✓ Save Tier' : '+ Add Tier'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Tiers List */}
+                {draftFeesList.length > 0 ? (
+                  <div className="divide-y divide-ink/10 border border-ink bg-white overflow-hidden max-h-[160px] overflow-y-auto">
+                    {draftFeesList.map((tier, idx) => (
+                      <div key={idx} className="p-2.5 flex items-center justify-between hover:bg-zinc-50 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[9px] px-1.5 py-0.5 border border-ink/30 bg-zinc-100 text-ink/70">
+                            #{idx + 1}
+                          </span>
+                          <span className="font-sans font-bold text-ink">{tier.category}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-black text-brand-orange text-xs">
+                            {tier.fee}
+                          </span>
+                          <div className="flex gap-1.5 font-mono text-[9px] font-bold">
+                            <button 
+                              type="button" 
+                              onClick={() => {
+                                setEditingFeesIdx(idx);
+                                setRegFeeCategory(tier.category);
+                                setRegFeeValue(tier.fee);
+                              }}
+                              className="text-brand-blue hover:underline uppercase cursor-pointer"
+                            >
+                              edit
+                            </button>
+                            <button 
+                              type="button" 
+                              onClick={() => handleDeleteFeeTier(idx)}
+                              className="text-brand-orange hover:text-red-700 font-bold ml-1 uppercase cursor-pointer text-base leading-none"
+                            >
+                              &times;
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-3 border border-dashed border-ink/30 text-center text-[10px] font-mono text-ink/50 uppercase">
+                    No custom tiers added yet. The standard fee configured above applies to all registrants.
+                  </div>
+                )}
+              </div>
+            </div>
             <div className="grid sm:grid-cols-2 gap-6 animate-fade-in text-xs">
               <div>
                 <label className="block text-[9px] font-black uppercase tracking-widest opacity-50 mb-1.5">Spot Registration Title</label>
@@ -1067,6 +1623,72 @@ export default function EventFormModal({
                           <div className="prose prose-sm font-sans text-xs text-ink" dangerouslySetInnerHTML={{ __html: renderMarkdown(paymentMarkdown) }} />
                         </div>
                       )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* SUPPORT OFFICE // RSVP CONFIGURATION */}
+              <div className="border border-ink bg-white p-5 space-y-4 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ink/10 pb-3">
+                  <div>
+                    <div className="font-mono text-[10px] font-black uppercase tracking-wider text-brand-blue flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5" />
+                      Support Office &amp; RSVP Help Desk (Right Sidebar Section)
+                    </div>
+                    <p className="font-mono text-[9px] text-ink/60 uppercase mt-0.5">
+                      Configure custom guidance text and designated contact email ID displayed on the event details page.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 text-[8px] font-mono font-bold uppercase bg-brand-blue/10 text-brand-blue border border-brand-blue/30">
+                      Configurable Per Event
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">
+                      RSVP / Support Office Assistance Message
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="e.g. Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?"
+                      className="w-full p-2.5 border border-ink bg-paper focus:bg-white text-xs font-mono focus:outline-none"
+                      value={supportOfficeText}
+                      onChange={e => setSupportOfficeText(e.target.value)}
+                    />
+                    <p className="text-[8px] font-mono text-ink/50 mt-1 uppercase">
+                      Leave blank to use default: "Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?"
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-[9px] font-black uppercase tracking-widest opacity-60 mb-1">
+                      Designated Support Email ID
+                    </label>
+                    <input
+                      type="email"
+                      placeholder="e.g. andamanlanguageandculture@gmail.com or academy@diversity.org.in"
+                      className="w-full p-2.5 border border-ink bg-paper focus:bg-white text-xs font-mono focus:outline-none"
+                      value={supportOfficeEmail}
+                      onChange={e => setSupportOfficeEmail(e.target.value)}
+                    />
+                    <p className="text-[8px] font-mono text-ink/50 mt-1 uppercase">
+                      Leave blank to use default: "academy@diversity.org.in"
+                    </p>
+                  </div>
+
+                  {(supportOfficeText.trim() || supportOfficeEmail.trim()) && (
+                    <div className="p-3 bg-zinc-50 border border-ink/20 text-[10px] font-mono">
+                      <span className="block text-[8px] font-black uppercase text-brand-blue mb-1">Live Card Preview:</span>
+                      <p className="text-ink/80 text-xs mb-1">
+                        {supportOfficeText.trim() || "Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?"}
+                      </p>
+                      <span className="text-brand-blue font-bold flex items-center gap-1 text-[10px]">
+                        <Mail className="w-3 h-3" /> Inquire: {supportOfficeEmail.trim() || "academy@diversity.org.in"}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1449,9 +2071,6 @@ export default function EventFormModal({
                     setNewPageMarkdown('');
                     setDraftDatesList([]);
                     setDraftScheduleList([]);
-                    setDraftFeesList([]);
-                    setRegDeadlineText('');
-                    setDraftInstructionsList([]);
                     setDraftListList([]);
                     setDraftLogisticsList([]);
                     setDraftCommitteesList([]);
@@ -2223,7 +2842,14 @@ export default function EventFormModal({
               {/* 4. REGISTRATION DETAILS (Requirement 2 RSVP Markdown Buttons and Previews) */}
               {newPageType === 'registration' && (
                 <div className="space-y-4 p-4 border border-ink bg-white animate-fade-in font-sans">
-                  <div className="font-bold text-[10px] text-brand-orange uppercase font-mono">Configure Threshold Gates & Registration Guideline RSVP Protocols</div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-ink/10 pb-2">
+                    <div className="font-bold text-[10px] text-brand-orange uppercase font-mono">
+                      Configure Threshold Gates &amp; Registration Guideline RSVP Protocols
+                    </div>
+                    <span className="font-mono text-[8px] uppercase px-2 py-0.5 bg-brand-blue/10 text-brand-blue border border-brand-blue/30 font-bold">
+                      ⚡ Synchronized with Admissions &amp; Fees Tab
+                    </span>
+                  </div>
                   
                   <div className="grid sm:grid-cols-3 gap-3 border border-ink p-3 bg-zinc-50 rounded">
                     <div className="sm:col-span-3">
@@ -2241,37 +2867,29 @@ export default function EventFormModal({
                     </div>
                     <div className="flex items-end text-right justify-end font-mono">
                       {editingFeesIdx !== null && (
-                        <button type="button" onClick={() => { setEditingFeesIdx(null); setRegFeeCategory(''); setRegFeeValue(''); }} className="px-2 py-1.5 bg-white border border-ink text-[10px] font-bold uppercase rounded mr-1">Cancel</button>
+                        <button type="button" onClick={() => { setEditingFeesIdx(null); setRegFeeCategory(''); setRegFeeValue(''); }} className="px-2 py-1.5 bg-white border border-ink text-[10px] font-bold uppercase rounded mr-1 cursor-pointer">Cancel</button>
                       )}
-                      <button type="button" onClick={() => {
-                        if (!regFeeCategory || !regFeeValue) { alert('Fee Category and Pricing input are required.'); return; }
-                        const record = { category: regFeeCategory, fee: regFeeValue };
-                        if (editingFeesIdx !== null) {
-                          const copy = [...draftFeesList];
-                          copy[editingFeesIdx] = record;
-                          setDraftFeesList(copy);
-                          setEditingFeesIdx(null);
-                        } else {
-                          setDraftFeesList([...draftFeesList, record]);
-                        }
-                        setRegFeeCategory(''); setRegFeeValue('');
-                      }} className="px-3 py-2 bg-brand-orange text-white text-[9px] uppercase font-bold border border-ink shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)]">
+                      <button 
+                        type="button" 
+                        onClick={handleAddOrSaveFeeTier}
+                        className="px-3 py-2 bg-brand-orange text-white text-[9px] uppercase font-bold border border-ink shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] hover:bg-black transition-all cursor-pointer"
+                      >
                         {editingFeesIdx !== null ? '✓ Save Pricing' : '+ Add Booking Tier'}
                       </button>
                     </div>
 
                     {draftFeesList.length > 0 && (
-                      <div className="col-span-3 mt-1 divide-y divide-ink/10 text-[9px] bg-white border border-ink/20 max-h-[100px] overflow-y-auto">
+                      <div className="col-span-3 mt-1 divide-y divide-ink/10 text-[9px] bg-white border border-ink/20 max-h-[140px] overflow-y-auto">
                         {draftFeesList.map((f, idx) => (
-                          <div key={idx} className="p-1 px-2.5 flex justify-between items-center bg-white text-xs">
+                          <div key={idx} className="p-1 px-2.5 flex justify-between items-center bg-white text-xs hover:bg-zinc-50">
                             <span className="font-mono">{f.category}: <strong className="text-brand-orange">{f.fee}</strong></span>
                             <div className="flex gap-2 font-mono text-[9px] font-bold">
                               <button type="button" onClick={() => {
                                 setEditingFeesIdx(idx);
                                 setRegFeeCategory(f.category);
                                 setRegFeeValue(f.fee);
-                              }} className="text-brand-blue hover:underline">edit</button>
-                              <button type="button" onClick={() => setDraftFeesList(draftFeesList.filter((_, i) => i !== idx))} className="text-brand-orange font-bold">&times;</button>
+                              }} className="text-brand-blue hover:underline cursor-pointer uppercase">edit</button>
+                              <button type="button" onClick={() => handleDeleteFeeTier(idx)} className="text-brand-orange hover:text-red-700 font-bold cursor-pointer text-base leading-none">&times;</button>
                             </div>
                           </div>
                         ))}
@@ -3245,9 +3863,6 @@ export default function EventFormModal({
                       setNewPageMarkdown('');
                       setDraftDatesList([]);
                       setDraftScheduleList([]);
-                      setDraftFeesList([]);
-                      setRegDeadlineText('');
-                      setDraftInstructionsList([]);
                       setDraftListList([]);
                       setDraftLogisticsList([]);
                       setDraftCommitteesList([]);

@@ -4,6 +4,7 @@ dotenv.config();
 import express from 'express';
 import * as cheerio from 'cheerio';
 import path from 'path';
+import fs from 'fs';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import crypto from 'crypto';
@@ -23,9 +24,21 @@ const ai = new GoogleGenAI({
     }
   }
 });
-import { events as defaultEvents, rawProjects as defaultProjects } from './src/data/config';
-import { centres as defaultCentres } from './src/data/centres/index';
-import { people as defaultPeople } from './src/data/people/index';
+
+// Load default seeds cleanly from serverSeeds.json without relying on frontend ESM modules
+const seedsPath = path.join(process.cwd(), 'serverSeeds.json');
+let seedsData: any = { events: [], projects: [], centres: [], people: [] };
+try {
+  if (fs.existsSync(seedsPath)) {
+    seedsData = JSON.parse(fs.readFileSync(seedsPath, 'utf-8'));
+  }
+} catch (e) {
+  console.error('Error loading serverSeeds.json:', e);
+}
+const defaultEvents: any[] = seedsData.events || [];
+const defaultProjects: any[] = seedsData.projects || [];
+const defaultCentres: any[] = seedsData.centres || [];
+const defaultPeople: any[] = seedsData.people || [];
 
 // Using encoded '@' -> '%40' for the password
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://ritesh_w2m:Ak%40dem!_2026%40K0mun!t!@codin-website.uksggxt.mongodb.net/?appName=CoDIN-Website";
@@ -416,6 +429,8 @@ const courseSchema = new mongoose.Schema({
     speaker: { type: String }
   }],
   subPages: [mongoose.Schema.Types.Mixed],
+  supportOfficeText: { type: String },
+  supportOfficeEmail: { type: String },
   registrationCard: {
     title: { type: String },
     description: { type: String },
@@ -424,7 +439,9 @@ const courseSchema = new mongoose.Schema({
     highlights: [{ type: String }],
     paymentMsgChoice: { type: String, default: 'markdown' },
     paymentMarkdown: { type: String },
-    paymentGatewayLink: { type: String }
+    paymentGatewayLink: { type: String },
+    fee: { type: Number, default: 0 },
+    fees: [mongoose.Schema.Types.Mixed]
   },
   eventDetails: { type: mongoose.Schema.Types.Mixed },
   iteration: { type: String },
@@ -450,6 +467,8 @@ const eventSchema = new mongoose.Schema({
   description: { type: String },
   longDescription: { type: String },
   image: { type: String },
+  fee: { type: Number, default: 0 },
+  completedFee: { type: Number, default: 0 },
   status: { type: String, enum: ['Draft', 'Upcoming', 'Ongoing', 'Completed', 'Archived'], default: 'Draft' },
   deleted: { type: Boolean, default: false },
   associatedCentres: [{ type: String }],
@@ -471,6 +490,8 @@ const eventSchema = new mongoose.Schema({
     speaker: { type: String }
   }],
   subPages: [mongoose.Schema.Types.Mixed],
+  supportOfficeText: { type: String },
+  supportOfficeEmail: { type: String },
   registrationCard: {
     title: { type: String },
     description: { type: String },
@@ -479,7 +500,9 @@ const eventSchema = new mongoose.Schema({
     highlights: [{ type: String }],
     paymentMsgChoice: { type: String, default: 'markdown' },
     paymentMarkdown: { type: String },
-    paymentGatewayLink: { type: String }
+    paymentGatewayLink: { type: String },
+    fee: { type: Number, default: 0 },
+    fees: [mongoose.Schema.Types.Mixed]
   },
   modulesList: [moduleSchema] // Support Requirement 8 for custom materials/sessions
 }, { timestamps: true });
@@ -553,6 +576,24 @@ const projectSchema = new mongoose.Schema({
   }],
   fundingAgency: { type: String },
   collaboratingAgency: { type: String },
+  fundingAgencies: [{
+    name: { type: String },
+    website: { type: String },
+    logo: { type: String },
+    role: { type: String }
+  }],
+  supportingAgencies: [{
+    name: { type: String },
+    website: { type: String },
+    logo: { type: String },
+    role: { type: String }
+  }],
+  collaborators: [{
+    name: { type: String },
+    website: { type: String },
+    logo: { type: String },
+    role: { type: String }
+  }],
   year: { type: String },
   startDate: { type: String },
   endDate: { type: String },
@@ -1037,7 +1078,7 @@ async function startServer() {
   connectDB();
 
   const app = express();
-  const PORT = 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(cors());
   app.use(express.json({ limit: '50mb' }));
@@ -3070,6 +3111,44 @@ async function startServer() {
       ? courseObj.modulesList
       : (courseObj.eventDetails?.modulesList || courseObj.modulesList || []);
 
+    const effectiveFee = (courseObj.fee !== undefined && courseObj.fee !== null && Number(courseObj.fee) > 0)
+      ? Number(courseObj.fee)
+      : (courseObj.registrationCard?.fee !== undefined && Number(courseObj.registrationCard.fee) > 0)
+        ? Number(courseObj.registrationCard.fee)
+        : (courseObj.eventDetails?.fee !== undefined && Number(courseObj.eventDetails.fee) > 0)
+          ? Number(courseObj.eventDetails.fee)
+          : (courseObj.fee !== undefined ? Number(courseObj.fee) : 0);
+
+    let effectiveFees = (Array.isArray(courseObj.registrationCard?.fees) && courseObj.registrationCard.fees.length > 0)
+      ? courseObj.registrationCard.fees
+      : (Array.isArray(courseObj.eventDetails?.registrationCard?.fees) && courseObj.eventDetails.registrationCard.fees.length > 0)
+        ? courseObj.eventDetails.registrationCard.fees
+        : [];
+
+    if (effectiveFees.length === 0) {
+      const allSubPages = Array.isArray(courseObj.subPages) && courseObj.subPages.length > 0 
+        ? courseObj.subPages 
+        : (Array.isArray(courseObj.eventDetails?.subPages) ? courseObj.eventDetails.subPages : []);
+      const regTab = allSubPages.find((p: any) => p && p.type === 'registration');
+      if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+        effectiveFees = regTab.content.fees;
+      } else if (effectiveFee > 0) {
+        effectiveFees = [{ category: 'Standard Registration', fee: `₹${effectiveFee.toLocaleString('en-IN')}`, numericAmount: effectiveFee }];
+      }
+    }
+
+    const effectiveRegistrationCard = {
+      title: 'Secure Your Spot',
+      description: 'Exclusive cohort limited to 15 participants for deep mentorship.',
+      buttonText: 'Apply for Admission',
+      buttonLink: '',
+      highlights: [],
+      ...(courseObj.eventDetails?.registrationCard || {}),
+      ...(courseObj.registrationCard || {}),
+      fee: effectiveFee,
+      fees: effectiveFees
+    };
+
     return {
       _id: courseObj._id,
       slug: courseObj.slug,
@@ -3091,17 +3170,13 @@ async function startServer() {
       sponsors: courseObj.sponsors || [],
       schedule: courseObj.schedule || [],
       subPages: courseObj.subPages || [],
-      registrationCard: courseObj.registrationCard || {
-        title: 'Secure Your Spot',
-        description: 'Exclusive cohort limited to 15 participants for deep mentorship.',
-        buttonText: 'Apply for Admission',
-        buttonLink: '',
-        highlights: []
-      },
-      isCourse: true,
-      fee: courseObj.fee,
-      completedFee: courseObj.completedFee,
       ...(courseObj.eventDetails || {}),
+      isCourse: true,
+      fee: effectiveFee,
+      completedFee: courseObj.completedFee !== undefined ? courseObj.completedFee : (courseObj.eventDetails?.completedFee ?? 0),
+      registrationCard: effectiveRegistrationCard,
+      supportOfficeText: courseObj.supportOfficeText || courseObj.eventDetails?.supportOfficeText,
+      supportOfficeEmail: courseObj.supportOfficeEmail || courseObj.eventDetails?.supportOfficeEmail,
       modulesList: resolvedModulesList
     };
   };
@@ -3293,6 +3368,8 @@ async function startServer() {
           sponsors: eventData.sponsors || [],
           schedule: eventData.schedule || [],
           subPages: eventData.subPages || [],
+          fee: eventData.fee !== undefined ? eventData.fee : 0,
+          completedFee: eventData.completedFee !== undefined ? eventData.completedFee : 0,
           registrationCard: eventData.registrationCard || {
             title: 'Secure Your Spot',
             description: 'Exclusive cohort limited to 15 participants for deep mentorship.',
@@ -3331,7 +3408,11 @@ async function startServer() {
               sponsors: eventData.sponsors !== undefined ? eventData.sponsors : existingCourseObj.sponsors,
               schedule: eventData.schedule !== undefined ? eventData.schedule : existingCourseObj.schedule,
               subPages: eventData.subPages !== undefined ? eventData.subPages : existingCourseObj.subPages,
+              fee: eventData.fee !== undefined ? eventData.fee : existingCourseObj.fee,
+              completedFee: eventData.completedFee !== undefined ? eventData.completedFee : existingCourseObj.completedFee,
               registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : existingCourseObj.registrationCard,
+              supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : existingCourseObj.supportOfficeText,
+              supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : existingCourseObj.supportOfficeEmail,
               modulesList: mergedModulesList,
               eventDetails: {
                 ...(existingCourseObj.eventDetails || {}),
@@ -3354,6 +3435,8 @@ async function startServer() {
                 schedule: eventData.schedule !== undefined ? eventData.schedule : (existingCourseObj.eventDetails?.schedule || existingCourseObj.schedule),
                 subPages: eventData.subPages !== undefined ? eventData.subPages : (existingCourseObj.eventDetails?.subPages || existingCourseObj.subPages),
                 registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : (existingCourseObj.eventDetails?.registrationCard || existingCourseObj.registrationCard),
+                supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : (existingCourseObj.eventDetails?.supportOfficeText || existingCourseObj.supportOfficeText),
+                supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : (existingCourseObj.eventDetails?.supportOfficeEmail || existingCourseObj.supportOfficeEmail),
                 modulesList: mergedModulesList
               }
             };
@@ -3397,7 +3480,11 @@ async function startServer() {
               sponsors: eventData.sponsors !== undefined ? eventData.sponsors : existingCourseObj.sponsors,
               schedule: eventData.schedule !== undefined ? eventData.schedule : existingCourseObj.schedule,
               subPages: eventData.subPages !== undefined ? eventData.subPages : existingCourseObj.subPages,
+              fee: eventData.fee !== undefined ? eventData.fee : existingCourseObj.fee,
+              completedFee: eventData.completedFee !== undefined ? eventData.completedFee : existingCourseObj.completedFee,
               registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : existingCourseObj.registrationCard,
+              supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : existingCourseObj.supportOfficeText,
+              supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : existingCourseObj.supportOfficeEmail,
               modulesList: mergedModulesList,
               eventDetails: {
                 ...(existingCourseObj.eventDetails || {}),
@@ -3420,6 +3507,8 @@ async function startServer() {
                 schedule: eventData.schedule !== undefined ? eventData.schedule : (existingCourseObj.eventDetails?.schedule || existingCourseObj.schedule),
                 subPages: eventData.subPages !== undefined ? eventData.subPages : (existingCourseObj.eventDetails?.subPages || existingCourseObj.subPages),
                 registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : (existingCourseObj.eventDetails?.registrationCard || existingCourseObj.registrationCard),
+                supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : (existingCourseObj.eventDetails?.supportOfficeText || existingCourseObj.supportOfficeText),
+                supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : (existingCourseObj.eventDetails?.supportOfficeEmail || existingCourseObj.supportOfficeEmail),
                 modulesList: mergedModulesList
               }
             };
@@ -3495,13 +3584,30 @@ async function startServer() {
     try {
       // @ts-ignore
       const user = req.user;
-      if (user.role !== 'superadmin' && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Forbidden: Admin access required' });
-      }
+      const isPrivileged = user && (user.role === 'superadmin' || user.role === 'admin');
 
       const { id } = req.params;
       const { isCourse } = req.query;
       const eventData = req.body;
+
+      if (!isPrivileged) {
+        let targetDoc: any = null;
+        if (isDbConnected) {
+          targetDoc = (await EventModel.findOne({ $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { slug: id }] })) ||
+                      (await Course.findOne({ $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { slug: id }] }));
+        } else {
+          targetDoc = inMemoryEvents.find(e => e._id === id || e.slug === id) || inMemoryCourses.find(c => c._id === id || c.slug === id);
+        }
+        const isOrganizer = targetDoc && (
+          targetDoc.associatedPeople?.includes(user._id?.toString()) ||
+          targetDoc.associatedPeople?.includes(user.slug) ||
+          targetDoc.instructors?.some((i: any) => i && (i.user?.toString() === user._id?.toString() || i.toString() === user._id?.toString())) ||
+          targetDoc.tas?.some((t: any) => t && (t.user?.toString() === user._id?.toString() || t.toString() === user._id?.toString()))
+        );
+        if (!isOrganizer) {
+          return res.status(403).json({ error: 'Forbidden: Admin or event organizer access required' });
+        }
+      }
 
       const isCourseEvent = isCourse === 'true' || eventData.isCourse === true || eventData.type === 'W2M Residential Course' || eventData.type === 'Residential Course' || eventData.type === 'Residential';
 
@@ -3517,6 +3623,56 @@ async function startServer() {
 
           const oldEvent = typeof existingCourse.toObject === 'function' ? existingCourse.toObject() : existingCourse;
           const mergedModulesList = resolveModulesListHelper(eventData, oldEvent);
+
+          let courseFee = eventData.fee !== undefined ? eventData.fee : oldEvent.fee;
+          if ((courseFee === undefined || courseFee === null || (courseFee === 0 && !eventData.isFree)) && oldEvent.fee > 0) {
+            courseFee = oldEvent.fee;
+          }
+          let courseCompletedFee = eventData.completedFee !== undefined ? eventData.completedFee : oldEvent.completedFee;
+
+          let courseFees = Array.isArray(eventData.registrationCard?.fees) ? eventData.registrationCard.fees : [];
+          if (courseFees.length === 0) {
+            const regTab = Array.isArray(eventData.subPages) ? eventData.subPages.find((p: any) => p && p.type === 'registration') : null;
+            if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+              courseFees = regTab.content.fees;
+            } else if (Array.isArray(oldEvent.registrationCard?.fees) && oldEvent.registrationCard.fees.length > 0) {
+              courseFees = oldEvent.registrationCard.fees;
+            } else if (Array.isArray(oldEvent.subPages)) {
+              const oldRegTab = oldEvent.subPages.find((p: any) => p && p.type === 'registration');
+              if (oldRegTab && oldRegTab.content && Array.isArray(oldRegTab.content.fees) && oldRegTab.content.fees.length > 0) {
+                courseFees = oldRegTab.content.fees;
+              }
+            }
+          }
+          if (courseFees.length === 0 && courseFee > 0) {
+            courseFees = [{ category: 'Standard Registration', fee: `₹ ${Number(courseFee).toLocaleString('en-IN')}`, numericAmount: Number(courseFee) }];
+          }
+
+          const mergedRegCard = {
+            ...(oldEvent.registrationCard || {}),
+            ...(eventData.registrationCard || {}),
+            fee: courseFee,
+            fees: courseFees
+          };
+
+          let mergedSubPages = eventData.subPages !== undefined ? eventData.subPages : (oldEvent.subPages || []);
+          if (Array.isArray(mergedSubPages)) {
+            mergedSubPages = mergedSubPages.map((p: any) => {
+              if (p && p.type === 'registration') {
+                const pFees = (p.content && Array.isArray(p.content.fees) && p.content.fees.length > 0)
+                  ? p.content.fees
+                  : (courseFees.length > 0 ? courseFees : []);
+                return {
+                  ...p,
+                  content: {
+                    ...(p.content || {}),
+                    fees: pFees
+                  }
+                };
+              }
+              return p;
+            });
+          }
 
           const updateFields: any = {
             title: eventData.title !== undefined ? eventData.title : oldEvent.title,
@@ -3536,8 +3692,12 @@ async function startServer() {
             collaborators: eventData.collaborators !== undefined ? eventData.collaborators : oldEvent.collaborators,
             sponsors: eventData.sponsors !== undefined ? eventData.sponsors : oldEvent.sponsors,
             schedule: eventData.schedule !== undefined ? eventData.schedule : oldEvent.schedule,
-            subPages: eventData.subPages !== undefined ? eventData.subPages : oldEvent.subPages,
-            registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : oldEvent.registrationCard,
+            subPages: mergedSubPages,
+            fee: courseFee,
+            completedFee: courseCompletedFee,
+            registrationCard: mergedRegCard,
+            supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : oldEvent.supportOfficeText,
+            supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : oldEvent.supportOfficeEmail,
             modulesList: mergedModulesList,
             eventDetails: {
               ...(oldEvent.eventDetails || {}),
@@ -3558,8 +3718,12 @@ async function startServer() {
               collaborators: eventData.collaborators !== undefined ? eventData.collaborators : (oldEvent.eventDetails?.collaborators || oldEvent.collaborators),
               sponsors: eventData.sponsors !== undefined ? eventData.sponsors : (oldEvent.eventDetails?.sponsors || oldEvent.sponsors),
               schedule: eventData.schedule !== undefined ? eventData.schedule : (oldEvent.eventDetails?.schedule || oldEvent.schedule),
-              subPages: eventData.subPages !== undefined ? eventData.subPages : (oldEvent.eventDetails?.subPages || oldEvent.subPages),
-              registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : (oldEvent.eventDetails?.registrationCard || oldEvent.registrationCard),
+              subPages: mergedSubPages,
+              fee: courseFee,
+              completedFee: courseCompletedFee,
+              registrationCard: mergedRegCard,
+              supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : (oldEvent.eventDetails?.supportOfficeText || oldEvent.supportOfficeText),
+              supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : (oldEvent.eventDetails?.supportOfficeEmail || oldEvent.supportOfficeEmail),
               modulesList: mergedModulesList
             }
           };
@@ -3582,6 +3746,56 @@ async function startServer() {
           const oldEvent = { ...inMemoryCourses[idx] };
           const mergedModulesList = resolveModulesListHelper(eventData, oldEvent);
 
+          let courseFee = eventData.fee !== undefined ? eventData.fee : oldEvent.fee;
+          if ((courseFee === undefined || courseFee === null || (courseFee === 0 && !eventData.isFree)) && oldEvent.fee > 0) {
+            courseFee = oldEvent.fee;
+          }
+          let courseCompletedFee = eventData.completedFee !== undefined ? eventData.completedFee : oldEvent.completedFee;
+
+          let courseFees = Array.isArray(eventData.registrationCard?.fees) ? eventData.registrationCard.fees : [];
+          if (courseFees.length === 0) {
+            const regTab = Array.isArray(eventData.subPages) ? eventData.subPages.find((p: any) => p && p.type === 'registration') : null;
+            if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+              courseFees = regTab.content.fees;
+            } else if (Array.isArray(oldEvent.registrationCard?.fees) && oldEvent.registrationCard.fees.length > 0) {
+              courseFees = oldEvent.registrationCard.fees;
+            } else if (Array.isArray(oldEvent.subPages)) {
+              const oldRegTab = oldEvent.subPages.find((p: any) => p && p.type === 'registration');
+              if (oldRegTab && oldRegTab.content && Array.isArray(oldRegTab.content.fees) && oldRegTab.content.fees.length > 0) {
+                courseFees = oldRegTab.content.fees;
+              }
+            }
+          }
+          if (courseFees.length === 0 && courseFee > 0) {
+            courseFees = [{ category: 'Standard Registration', fee: `₹ ${Number(courseFee).toLocaleString('en-IN')}`, numericAmount: Number(courseFee) }];
+          }
+
+          const mergedRegCard = {
+            ...(oldEvent.registrationCard || {}),
+            ...(eventData.registrationCard || {}),
+            fee: courseFee,
+            fees: courseFees
+          };
+
+          let mergedSubPages = eventData.subPages !== undefined ? eventData.subPages : (oldEvent.subPages || []);
+          if (Array.isArray(mergedSubPages)) {
+            mergedSubPages = mergedSubPages.map((p: any) => {
+              if (p && p.type === 'registration') {
+                const pFees = (p.content && Array.isArray(p.content.fees) && p.content.fees.length > 0)
+                  ? p.content.fees
+                  : (courseFees.length > 0 ? courseFees : []);
+                return {
+                  ...p,
+                  content: {
+                    ...(p.content || {}),
+                    fees: pFees
+                  }
+                };
+              }
+              return p;
+            });
+          }
+
           const updateFields: any = {
             title: eventData.title !== undefined ? eventData.title : oldEvent.title,
             type: eventData.type !== undefined ? eventData.type : oldEvent.type,
@@ -3600,8 +3814,12 @@ async function startServer() {
             collaborators: eventData.collaborators !== undefined ? eventData.collaborators : oldEvent.collaborators,
             sponsors: eventData.sponsors !== undefined ? eventData.sponsors : oldEvent.sponsors,
             schedule: eventData.schedule !== undefined ? eventData.schedule : oldEvent.schedule,
-            subPages: eventData.subPages !== undefined ? eventData.subPages : oldEvent.subPages,
-            registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : oldEvent.registrationCard,
+            subPages: mergedSubPages,
+            fee: courseFee,
+            completedFee: courseCompletedFee,
+            registrationCard: mergedRegCard,
+            supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : oldEvent.supportOfficeText,
+            supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : oldEvent.supportOfficeEmail,
             modulesList: mergedModulesList,
             eventDetails: {
               ...(oldEvent.eventDetails || {}),
@@ -3622,8 +3840,12 @@ async function startServer() {
               collaborators: eventData.collaborators !== undefined ? eventData.collaborators : (oldEvent.eventDetails?.collaborators || oldEvent.collaborators),
               sponsors: eventData.sponsors !== undefined ? eventData.sponsors : (oldEvent.eventDetails?.sponsors || oldEvent.sponsors),
               schedule: eventData.schedule !== undefined ? eventData.schedule : (oldEvent.eventDetails?.schedule || oldEvent.schedule),
-              subPages: eventData.subPages !== undefined ? eventData.subPages : (oldEvent.eventDetails?.subPages || oldEvent.subPages),
-              registrationCard: eventData.registrationCard !== undefined ? eventData.registrationCard : (oldEvent.eventDetails?.registrationCard || oldEvent.registrationCard),
+              subPages: mergedSubPages,
+              fee: courseFee,
+              completedFee: courseCompletedFee,
+              registrationCard: mergedRegCard,
+              supportOfficeText: eventData.supportOfficeText !== undefined ? eventData.supportOfficeText : (oldEvent.eventDetails?.supportOfficeText || oldEvent.supportOfficeText),
+              supportOfficeEmail: eventData.supportOfficeEmail !== undefined ? eventData.supportOfficeEmail : (oldEvent.eventDetails?.supportOfficeEmail || oldEvent.supportOfficeEmail),
               modulesList: mergedModulesList
             }
           };
@@ -3652,12 +3874,72 @@ async function startServer() {
         const oldEvent = existingEvent ? (typeof existingEvent.toObject === 'function' ? existingEvent.toObject() : existingEvent) : null;
         const mergedModulesList = resolveModulesListHelper(eventData, oldEvent);
 
+        // Safeguard registration fee and tiers from being overwritten or lost
+        let eventFee = eventData.fee !== undefined ? eventData.fee : oldEvent?.fee;
+        if ((eventFee === undefined || eventFee === null || (eventFee === 0 && !eventData.isFree)) && oldEvent && oldEvent.fee > 0) {
+          eventFee = oldEvent.fee;
+        }
+
+        let eventFees = Array.isArray(eventData.registrationCard?.fees) ? eventData.registrationCard.fees : [];
+        if (eventFees.length === 0) {
+          const regTab = Array.isArray(eventData.subPages) ? eventData.subPages.find((p: any) => p && p.type === 'registration') : null;
+          if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+            eventFees = regTab.content.fees;
+          } else if (oldEvent) {
+            if (Array.isArray(oldEvent.registrationCard?.fees) && oldEvent.registrationCard.fees.length > 0) {
+              eventFees = oldEvent.registrationCard.fees;
+            } else if (Array.isArray(oldEvent.subPages)) {
+              const oldRegTab = oldEvent.subPages.find((p: any) => p && p.type === 'registration');
+              if (oldRegTab && oldRegTab.content && Array.isArray(oldRegTab.content.fees) && oldRegTab.content.fees.length > 0) {
+                eventFees = oldRegTab.content.fees;
+              }
+            }
+          }
+        }
+        if (eventFees.length === 0 && eventFee > 0) {
+          eventFees = [{ category: 'Standard Registration', fee: `₹ ${Number(eventFee).toLocaleString('en-IN')}`, numericAmount: Number(eventFee) }];
+        }
+
+        const mergedRegCard = {
+          ...(oldEvent?.registrationCard || {}),
+          ...(eventData.registrationCard || {}),
+          fee: eventFee !== undefined ? eventFee : (oldEvent?.registrationCard?.fee || 0),
+          fees: eventFees
+        };
+
+        let mergedSubPages = eventData.subPages !== undefined ? eventData.subPages : (oldEvent?.subPages || []);
+        if (Array.isArray(mergedSubPages)) {
+          mergedSubPages = mergedSubPages.map((p: any) => {
+            if (p && p.type === 'registration') {
+              const pFees = (p.content && Array.isArray(p.content.fees) && p.content.fees.length > 0)
+                ? p.content.fees
+                : (eventFees.length > 0 ? eventFees : []);
+              return {
+                ...p,
+                content: {
+                  ...(p.content || {}),
+                  fees: pFees
+                }
+              };
+            }
+            return p;
+          });
+        }
+
+        const { _id, __v, ...cleanPayload } = eventData;
+        const updatedEventData = {
+          ...cleanPayload,
+          fee: eventFee,
+          registrationCard: mergedRegCard,
+          subPages: mergedSubPages,
+          modulesList: mergedModulesList
+        };
+
         let updatedEvent;
-        const updatedEventData = { ...eventData, modulesList: mergedModulesList };
         if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
-          updatedEvent = await EventModel.findByIdAndUpdate(id, updatedEventData, { new: true });
+          updatedEvent = await EventModel.findByIdAndUpdate(id, { $set: updatedEventData }, { new: true });
         } else {
-          updatedEvent = await EventModel.findOneAndUpdate({ slug: id }, updatedEventData, { new: true });
+          updatedEvent = await EventModel.findOneAndUpdate({ slug: id }, { $set: updatedEventData }, { new: true });
         }
         if (!updatedEvent) return res.status(404).json({ error: 'Event not found' });
 
@@ -3675,7 +3957,67 @@ async function startServer() {
         if (idx === -1) return res.status(404).json({ error: 'Event not found' });
         const oldEvent = { ...inMemoryEvents[idx] };
         const mergedModulesList = resolveModulesListHelper(eventData, oldEvent);
-        inMemoryEvents[idx] = { ...inMemoryEvents[idx], ...eventData, modulesList: mergedModulesList };
+
+        let eventFee = eventData.fee !== undefined ? eventData.fee : oldEvent.fee;
+        if ((eventFee === undefined || eventFee === null || (eventFee === 0 && !eventData.isFree)) && oldEvent.fee > 0) {
+          eventFee = oldEvent.fee;
+        }
+
+        let eventFees = Array.isArray(eventData.registrationCard?.fees) ? eventData.registrationCard.fees : [];
+        if (eventFees.length === 0) {
+          const regTab = Array.isArray(eventData.subPages) ? eventData.subPages.find((p: any) => p && p.type === 'registration') : null;
+          if (regTab && regTab.content && Array.isArray(regTab.content.fees) && regTab.content.fees.length > 0) {
+            eventFees = regTab.content.fees;
+          } else {
+            if (Array.isArray(oldEvent.registrationCard?.fees) && oldEvent.registrationCard.fees.length > 0) {
+              eventFees = oldEvent.registrationCard.fees;
+            } else if (Array.isArray(oldEvent.subPages)) {
+              const oldRegTab = oldEvent.subPages.find((p: any) => p && p.type === 'registration');
+              if (oldRegTab && oldRegTab.content && Array.isArray(oldRegTab.content.fees) && oldRegTab.content.fees.length > 0) {
+                eventFees = oldRegTab.content.fees;
+              }
+            }
+          }
+        }
+        if (eventFees.length === 0 && eventFee > 0) {
+          eventFees = [{ category: 'Standard Registration', fee: `₹ ${Number(eventFee).toLocaleString('en-IN')}`, numericAmount: Number(eventFee) }];
+        }
+
+        const mergedRegCard = {
+          ...(oldEvent.registrationCard || {}),
+          ...(eventData.registrationCard || {}),
+          fee: eventFee,
+          fees: eventFees
+        };
+
+        let mergedSubPages = eventData.subPages !== undefined ? eventData.subPages : (oldEvent.subPages || []);
+        if (Array.isArray(mergedSubPages)) {
+          mergedSubPages = mergedSubPages.map((p: any) => {
+            if (p && p.type === 'registration') {
+              const pFees = (p.content && Array.isArray(p.content.fees) && p.content.fees.length > 0)
+                ? p.content.fees
+                : (eventFees.length > 0 ? eventFees : []);
+              return {
+                ...p,
+                content: {
+                  ...(p.content || {}),
+                  fees: pFees
+                }
+              };
+            }
+            return p;
+          });
+        }
+
+        const { _id, __v, ...cleanPayload } = eventData;
+        inMemoryEvents[idx] = {
+          ...inMemoryEvents[idx],
+          ...cleanPayload,
+          fee: eventFee,
+          registrationCard: mergedRegCard,
+          subPages: mergedSubPages,
+          modulesList: mergedModulesList
+        };
         await syncEventParticipation(
           extractEventParticipants(oldEvent),
           extractEventParticipants(inMemoryEvents[idx]),
@@ -7212,7 +7554,7 @@ async function startServer() {
   app.use('/api', apiRouter);
 
   // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV === "development") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },

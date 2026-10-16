@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Event } from './types';
+import { Event } from './types.ts';
 
 export const fieldArchivingKancheepuram2025: Event = {
   slug: "field-archiving-kancheepuram-2025",

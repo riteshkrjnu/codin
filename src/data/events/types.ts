@@ -88,6 +88,23 @@ export interface Event {
   schedule?: ScheduleItem[];
   subPages?: EventSubPage[]; // Rich, modular pages config
   presenters?: EventPresenter[]; // Active presenters list
+  fee?: number;
+  completedFee?: number;
+  isCourse?: boolean;
+  supportOfficeText?: string;
+  supportOfficeEmail?: string;
+  registrationCard?: {
+    title?: string;
+    description?: string;
+    buttonText?: string;
+    buttonLink?: string;
+    highlights?: string[];
+    paymentMsgChoice?: 'markdown' | 'link';
+    paymentMarkdown?: string;
+    paymentGatewayLink?: string;
+    fee?: number;
+    fees?: RegistrationFee[];
+  };
 }
 
 export interface EventPartner {

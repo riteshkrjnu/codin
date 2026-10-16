@@ -57,7 +57,7 @@ export const navigation: NavItem[] = [
   },
 ];
 
-export * from './projects';
+export * from './projects/index.ts';
 
 export const impactStats = [
   { label: "Languages Targeted", value: "45+" },
@@ -222,11 +222,11 @@ export const customCourses = [
   }
 ];
 
-export * from './people';
+export * from './people/index.ts';
 
-export * from './centres';
+export * from './centres/index.ts';
 
-export * from './events';
+export * from './events/index.ts';
 
 export interface Announcement {
   id: string;
@@ -307,7 +307,7 @@ const customW2mNotifications: W2MNotification[] = [
 ];
 
 // Computed live-updating feeds
-import { events } from './events';
+import { events } from './events/index.ts';
 
 function getLiveFeeds() {
   const announcementsList = [...customAnnouncements];

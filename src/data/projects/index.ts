@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Project } from './types';
-import { kailash } from './kailash';
-import { tholkudi } from './tholkudi';
-import { suvadugal } from './suvadugal';
+import { Project } from './types.ts';
+import { kailash } from './kailash.ts';
+import { tholkudi } from './tholkudi.ts';
+import { suvadugal } from './suvadugal.ts';
 
-export * from './types';
+export * from './types.ts';
 
 export const rawProjects: Project[] = [
   kailash,

@@ -3,7 +3,10 @@
   "appId": "1:810054501192:web:eae772acf76af85f31e97d",
   "apiKey": "AIzaSyCZ13IAG8kHtjMwHux7tkPlR6P9gTkeUZo",
   "authDomain": "eastern-index-mcf5x.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-codinwebsite-b949f921-3a37-42e4-9408-450a573465cc",
   "storageBucket": "eastern-index-mcf5x.firebasestorage.app",
   "messagingSenderId": "810054501192",
-  "measurementId": ""
+  "measurementId": "",
+  "oAuthClientId": "810054501192-maf3u7co4lrto2hftsurlddj704o2f2t.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

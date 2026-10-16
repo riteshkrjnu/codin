@@ -16,6 +16,7 @@ import {
 import { renderMarkdown } from '../lib/utils';
 import { MarkdownMediaHelper } from '../components/MarkdownMediaHelper';
 import EventFormModal from '../components/EventFormModal';
+import { getResolvedEventFee } from '../lib/eventFees';
 
 // Helpers for automated event status tracking and formatted dates
 const formatEventDates = (startStr: string, endStr: string): string => {
@@ -131,7 +132,10 @@ export default function Events() {
 
   const [dynamicEvents, setDynamicEvents] = useState<any[]>([]);
   const [selectedType, setSelectedType] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('Ongoing');
+  const [statusFilter, setStatusFilter] = useState<string>(() => {
+    const hasDefaultOngoing = defaultEvents.some(e => e.status === 'Ongoing' && !(e as any).deleted);
+    return hasDefaultOngoing ? 'Ongoing' : 'Upcoming';
+  });
   const [hasInitializedStatus, setHasInitializedStatus] = useState(false);
   const [hasInitialFetchCompleted, setHasInitialFetchCompleted] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -406,9 +410,16 @@ export default function Events() {
     });
   }, [dynamicEvents]);
 
-  // Mark status initialization as complete without overriding user choice
+  // Auto-initialize default status tab: 'Ongoing' if ongoing events exist, otherwise 'Upcoming'
   useEffect(() => {
     if (hasInitialFetchCompleted && !hasInitializedStatus && allMergedEvents.length > 0) {
+      const activeEvents = allMergedEvents.filter(e => !e.deleted);
+      const hasOngoing = activeEvents.some(e => e.status === 'Ongoing');
+      if (!hasOngoing) {
+        setStatusFilter('Upcoming');
+      } else {
+        setStatusFilter('Ongoing');
+      }
       setHasInitializedStatus(true);
     }
   }, [allMergedEvents, hasInitialFetchCompleted, hasInitializedStatus]);
@@ -977,6 +988,12 @@ export default function Events() {
                       </span>
                     </div>
 
+                    <div className="absolute top-4 right-4">
+                      <span className="px-2.5 py-1 text-[8px] font-mono font-black uppercase tracking-wider border border-ink bg-white text-ink shadow-[2px_2px_0px_rgba(0,0,0,1)]">
+                        {getResolvedEventFee(event).display}
+                      </span>
+                    </div>
+
                     <div className="absolute bottom-4 left-4 bg-paper border border-ink px-3 py-1 font-mono text-[9px] font-black uppercase tracking-wider text-ink font-semibold">
                       {event.type}
                     </div>
@@ -994,6 +1011,10 @@ export default function Events() {
                           <MapPin className="w-4 h-4 text-brand-blue" />
                           {event.location}
                         </span>
+                        <span className="flex items-center gap-2">
+                          <Coins className="w-4 h-4 text-brand-orange" />
+                          {getResolvedEventFee(event).display}
+                        </span>
                       </div>
 
                       <h2 className="font-serif text-3xl md:text-4xl font-black mb-4 hover:text-brand-blue transition-colors leading-tight font-bold">
@@ -1002,9 +1023,10 @@ export default function Events() {
                         </Link>
                       </h2>
 
-                      <p className="font-mono text-xs text-ink/70 leading-relaxed mb-8 max-w-4xl font-semibold">
-                        {event.description}
-                      </p>
+                      <div 
+                        className="font-mono text-xs text-ink/70 leading-relaxed mb-8 max-w-4xl font-semibold"
+                        dangerouslySetInnerHTML={{ __html: renderMarkdown(event.description) }}
+                      />
 
                       <div className="grid md:grid-cols-3 gap-6 border-t border-ink/10 pt-6 mt-6 text-left">
                         {/* Connected Centres */}

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Person } from './types';
+import { Person } from './types.ts';
 
 export const R_Karthick_Narayanan: Person = {
   slug: "karthick",

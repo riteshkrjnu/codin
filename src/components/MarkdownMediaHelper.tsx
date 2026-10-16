@@ -72,11 +72,26 @@ export function MarkdownMediaHelper({
     setVideoUrl('');
   };
 
+  const [linkTitle, setLinkTitle] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+
+  const insertLink = () => {
+    if (!linkUrl.trim()) return;
+    let url = linkUrl.trim();
+    if (!/^(https?:|\/|#|mailto:|tel:)/i.test(url)) {
+      url = 'https://' + url;
+    }
+    const label = linkTitle.trim() || url;
+    onInsert(`[${label}](${url})`);
+    setLinkTitle('');
+    setLinkUrl('');
+  };
+
   return (
     <div className="bg-paper p-3 border border-ink/40 rounded-sm mb-4 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 pb-2">
         <span className="text-[10px] font-mono uppercase font-black tracking-wider text-brand-orange">
-          ⚡ Markdown Media Assistant (Images / Videos)
+          ⚡ Markdown Media & Links Assistant
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -116,9 +131,40 @@ export function MarkdownMediaHelper({
             <button 
               type="button" 
               onClick={insertVideo}
-              className="px-2.5 py-1 bg-brand-blue text-white text-[10px] font-mono uppercase font-black hover:bg-ink hover:text-white"
+              className="px-2.5 py-1 bg-brand-blue text-white text-[10px] font-mono uppercase font-black hover:bg-ink hover:text-white cursor-pointer"
             >
               Insert
+            </button>
+          </div>
+        </div>
+
+        {/* Hyperlink Insertion */}
+        <div className="md:col-span-2 border-t border-ink/10 pt-2">
+          <label className="block text-[8px] font-mono uppercase tracking-wider text-ink/60 mb-1">
+            Insert Hyperlink (Web Link, Drive Document, External Portal, etc.)
+          </label>
+          <div className="flex flex-col sm:flex-row gap-1.5">
+            <input 
+              type="text" 
+              placeholder="Display label (e.g. Workshop Registration Form)" 
+              className="sm:w-1/2 text-xs font-mono p-1 border border-ink/30 focus:outline-none bg-white"
+              value={linkTitle}
+              onChange={e => setLinkTitle(e.target.value)}
+            />
+            <input 
+              type="text" 
+              placeholder="Destination URL (e.g. https://forms.gle/...)" 
+              className="flex-1 text-xs font-mono p-1 border border-ink/30 focus:outline-none bg-white"
+              value={linkUrl}
+              onChange={e => setLinkUrl(e.target.value)}
+            />
+            <button 
+              type="button" 
+              onClick={insertLink}
+              disabled={!linkUrl.trim()}
+              className="px-3 py-1 bg-brand-orange text-white text-[10px] font-mono uppercase font-black hover:bg-ink hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer shrink-0"
+            >
+              Insert Link
             </button>
           </div>
         </div>

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Centre } from './types';
+import { Centre } from './types.ts';
 
 export const diversityAiNlp: Centre = {
   slug: "diversity-ai-nlp",

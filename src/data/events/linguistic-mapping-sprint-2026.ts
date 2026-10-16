@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Event } from './types';
+import { Event } from './types.ts';
 
 export const linguisticMappingSprint2026: Event = {
   slug: "linguistic-mapping-sprint-2026",

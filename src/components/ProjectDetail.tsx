@@ -17,6 +17,7 @@ import {
   Save, X, Upload, Video, Image as ImageIcon
 } from 'lucide-react';
 import { BrutalistLoader } from './Loader';
+import ProjectFormModal from './ProjectFormModal';
 
 const iconMap: Record<string, any> = {
   kailash: Zap,
@@ -439,84 +440,7 @@ export default function ProjectDetail() {
   const activeTab = tabsList.find(t => t.slug === activeTabSlug) || tabsList[0];
 
   const openEditModal = () => {
-    setEditForm({
-      id: project.id || project._id || '',
-      title: project.title || '',
-      tag: project.tag || '',
-      description: project.description || '',
-      longDescription: project.longDescription || '',
-      methodology: project.methodology || '',
-      aims: (project.aims || []).join(', '),
-      impact: (project.impact || []).join('\n'),
-      year: project.year || '',
-      fundingAgency: project.fundingAgency || '',
-      collaboratingAgency: project.collaboratingAgency || '',
-      status: project.status || 'Ongoing',
-      image: project.image || '',
-      outputUrl: project.outputUrl || '',
-      outputLabel: project.outputLabel || '',
-    });
-    setModalSubPages(project.subPages || []);
-    setModalOverviewImages(project.overviewImages || []);
-    setModalOverviewYoutubeLinks(project.overviewYoutubeLinks || []);
-    setModalMethodologyImages(project.methodologyImages || []);
-    setModalMethodologyYoutubeLinks(project.methodologyYoutubeLinks || []);
-    setModalAssociatedCentres(project.associatedCentres || []);
-    setModalProjectDirectors(project.projectDirectors || []);
-    setModalProjectStaffs(project.projectStaffs || []);
-    setModalOpenPositions(project.openPositions || []);
     setIsEditModalOpen(true);
-  };
-
-  const handleEditModalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const aimsArray = editForm.aims.split(',').map((a: string) => a.trim()).filter(Boolean);
-    const impactArray = editForm.impact.split('\n').map((i: string) => i.trim()).filter(Boolean);
-    const updatedProject = {
-      ...project,
-      ...editForm,
-      aims: aimsArray,
-      impact: impactArray,
-      subPages: modalSubPages,
-      overviewImages: modalOverviewImages,
-      overviewYoutubeLinks: modalOverviewYoutubeLinks,
-      methodologyImages: modalMethodologyImages,
-      methodologyYoutubeLinks: modalMethodologyYoutubeLinks,
-      associatedCentres: modalAssociatedCentres,
-      projectDirectors: modalProjectDirectors,
-      projectStaffs: modalProjectStaffs,
-      openPositions: modalOpenPositions
-    };
-
-    // Detect newly added job roles to automatically create a CoDIN bulletin announcement (Requirement 5)
-    try {
-      const existingTitles = (project.openPositions || []).map((p: any) => p.title);
-      const newlyAdded = modalOpenPositions.filter((pos: any) => !existingTitles.includes(pos.title));
-      
-      for (const pos of newlyAdded) {
-        await fetch('/api/announcements', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${user.token}`
-          },
-          body: JSON.stringify({
-            title: `Job Opportunity: ${pos.title} in project "${editForm.title}"`,
-            category: 'Recruitment',
-            date: `Apply by: ${pos.deadline || 'Ongoing'}`,
-            description: `${pos.description}. Full details are available on the ${editForm.title} project staff panel.`,
-            link: `/projects/${slug}`,
-            highlighted: true,
-            showInBulletin: true
-          })
-        });
-      }
-    } catch (annError) {
-      console.error("Failed to auto-register job ad announcement:", annError);
-    }
-
-    await handleSaveProject(updatedProject);
-    setIsEditModalOpen(false);
   };
 
   const handleApplySubmit = async (e: React.FormEvent) => {
@@ -740,11 +664,11 @@ export default function ProjectDetail() {
           </div>
 
           <div className="grid lg:grid-cols-12 gap-16 items-start">
-            {/* Tab Controls Sidebar */}
-            <div className="lg:col-span-3 lg:sticky lg:top-24 space-y-6">
+            {/* Tab Controls Sidebar (lg:col-span-3) */}
+            <div className="lg:col-span-3 min-w-0 lg:sticky lg:top-24 space-y-6">
               <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0 scrollbar-none">
                 {tabsList.map((tab) => {
-                  const TabIcon = getIcon(tab.icon || 'Info');
+                  const TabIcon = getIcon(tab.icon || "Info");
                   const isActive = activeTab.slug === tab.slug;
                   return (
                     <button
@@ -770,28 +694,8 @@ export default function ProjectDetail() {
                   Project Phase Status
                 </div>
                 <div className="font-serif font-black text-2xl italic">
-                  {project.status || 'Active Research'}
+                  {project.status || "Active Research"}
                 </div>
-                {project.fundingAgency && (
-                  <div className="mt-4 border-t border-paper/10 pt-3">
-                    <div className="font-mono text-[9px] font-black uppercase tracking-widest text-paper/70 mb-1">
-                      Funding Agency
-                    </div>
-                    <div className="font-mono text-[10px] font-bold leading-tight">
-                      {project.fundingAgency}
-                    </div>
-                  </div>
-                )}
-                {project.collaboratingAgency && (
-                  <div className="mt-4 border-t border-paper/10 pt-3">
-                    <div className="font-mono text-[9px] font-black uppercase tracking-widest text-paper/70 mb-1">
-                      Co-funding/Supporting Agencies
-                    </div>
-                    <div className="font-mono text-[10px] font-bold leading-tight">
-                      {project.collaboratingAgency}
-                    </div>
-                  </div>
-                )}
                 {project.year && (
                   <div className="mt-3 border-t border-paper/10 pt-3">
                     <div className="font-mono text-[9px] font-black uppercase tracking-widest text-paper/70 mb-1">
@@ -802,7 +706,228 @@ export default function ProjectDetail() {
                     </div>
                   </div>
                 )}
+                {project.id && (
+                  <div className="mt-2 border-t border-paper/10 pt-2 font-mono text-[9px] font-bold text-paper/80">
+                    CODE: {project.id}
+                  </div>
+                )}
               </div>
+
+              {/* Funding Agencies Card */}
+              {((project.fundingAgencies && project.fundingAgencies.length > 0) || project.fundingAgency) && (
+                <div className="space-y-3 select-none">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-3.5 h-3.5 text-brand-orange" />
+                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-brand-orange font-bold">
+                      Funding Agencies
+                    </span>
+                  </div>
+                  <div className="grid gap-3 animate-fade-in">
+                    {project.fundingAgencies && project.fundingAgencies.length > 0 ? (
+                      project.fundingAgencies.map((agency: any, idx: number) => {
+                        const CardComp = agency.website ? "a" : "div";
+                        return (
+                          <CardComp
+                            key={idx}
+                            {...(agency.website ? { href: agency.website, target: "_blank", rel: "noopener noreferrer" } : {})}
+                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
+                              agency.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
+                            }`}
+                          >
+                            {agency.logo ? (
+                              <img
+                                src={agency.logo}
+                                alt={agency.name}
+                                className="w-11 h-11 object-contain border border-ink p-1 bg-white shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                                FA
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                              <h4 
+                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                                title={agency.name}
+                              >
+                                {agency.name}
+                              </h4>
+                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
+                                {agency.role || "Funding Agency"}
+                              </p>
+                              {agency.website && (
+                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
+                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
+                                </p>
+                              )}
+                            </div>
+                          </CardComp>
+                        );
+                      })
+                    ) : (
+                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
+                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                          FA
+                        </div>
+                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                          <h4 
+                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                            title={project.fundingAgency}
+                          >
+                            {project.fundingAgency}
+                          </h4>
+                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Primary Funding Agency</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Supporting Agencies Card */}
+              {((project.supportingAgencies && project.supportingAgencies.length > 0) || (!project.fundingAgencies?.length && project.collaboratingAgency && !project.collaborators?.length)) && (
+                <div className="space-y-3 select-none">
+                  <div className="flex items-center gap-2">
+                    <Landmark className="w-3.5 h-3.5 text-brand-blue" />
+                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-brand-blue font-bold">
+                      Supporting Agencies
+                    </span>
+                  </div>
+                  <div className="grid gap-3 animate-fade-in">
+                    {project.supportingAgencies && project.supportingAgencies.length > 0 ? (
+                      project.supportingAgencies.map((agency: any, idx: number) => {
+                        const CardComp = agency.website ? "a" : "div";
+                        return (
+                          <CardComp
+                            key={idx}
+                            {...(agency.website ? { href: agency.website, target: "_blank", rel: "noopener noreferrer" } : {})}
+                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
+                              agency.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
+                            }`}
+                          >
+                            {agency.logo ? (
+                              <img
+                                src={agency.logo}
+                                alt={agency.name}
+                                className="w-11 h-11 object-contain border border-ink p-1 bg-white shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                                SA
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                              <h4 
+                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                                title={agency.name}
+                              >
+                                {agency.name}
+                              </h4>
+                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
+                                {agency.role || "Supporting Agency"}
+                              </p>
+                              {agency.website && (
+                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
+                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
+                                </p>
+                              )}
+                            </div>
+                          </CardComp>
+                        );
+                      })
+                    ) : (
+                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
+                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                          SA
+                        </div>
+                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                          <h4 
+                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                            title={project.collaboratingAgency}
+                          >
+                            {project.collaboratingAgency}
+                          </h4>
+                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Supporting Agency</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Collaborators Card under Funding Agencies */}
+              {((project.collaborators && project.collaborators.length > 0) || (project.collaboratingAgency && !project.supportingAgencies?.length)) && (
+                <div className="space-y-3 select-none">
+                  <div className="flex items-center gap-2">
+                    <Users className="w-3.5 h-3.5 text-ink" />
+                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-ink font-bold">
+                      Collaborating Partners
+                    </span>
+                  </div>
+                  <div className="grid gap-3 animate-fade-in">
+                    {project.collaborators && project.collaborators.length > 0 ? (
+                      project.collaborators.map((collab: any, idx: number) => {
+                        const CardComp = collab.website ? "a" : "div";
+                        return (
+                          <CardComp
+                            key={idx}
+                            {...(collab.website ? { href: collab.website, target: "_blank", rel: "noopener noreferrer" } : {})}
+                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
+                              collab.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
+                            }`}
+                          >
+                            {collab.logo ? (
+                              <img
+                                src={collab.logo}
+                                alt={collab.name}
+                                className="w-11 h-11 object-cover border border-ink p-1 bg-white shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                                CO
+                              </div>
+                            )}
+                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                              <h4 
+                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                                title={collab.name}
+                              >
+                                {collab.name}
+                              </h4>
+                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
+                                {collab.role || "Collaborating Partner"}
+                              </p>
+                              {collab.website && (
+                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
+                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
+                                </p>
+                              )}
+                            </div>
+                          </CardComp>
+                        );
+                      })
+                    ) : project.collaboratingAgency ? (
+                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
+                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
+                          CO
+                        </div>
+                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
+                          <h4 
+                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
+                            title={project.collaboratingAgency}
+                          >
+                            {project.collaboratingAgency}
+                          </h4>
+                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Collaborating Agency</p>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              )}
 
               {/* Implementing Centres */}
               {project.associatedCentres && project.associatedCentres.length > 0 && (
@@ -879,9 +1004,8 @@ export default function ProjectDetail() {
               )}
             </div>
 
-            {/* Tab Display Panel */}
-            <div className="lg:col-span-9 p-8 md:p-12 border-2 border-ink bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] min-h-[480px]">
-              
+            {/* Tab Display Panel (lg:col-span-9) */}
+            <div className="lg:col-span-9 min-w-0 p-8 md:p-12 border-2 border-ink bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] min-h-[480px]">
               {/* Tab Header block */}
               <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-ink/10 select-none">
                 <div className="p-3 bg-brand-acid text-ink border border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)]">
@@ -1258,7 +1382,7 @@ export default function ProjectDetail() {
                                   </a>
                                 )}
                                 <button 
-                                  type="button"
+                                  type="button" 
                                   onClick={() => {
                                     setApplyingPosition(opp);
                                     setIsApplyModalOpen(true);
@@ -1377,6 +1501,7 @@ export default function ProjectDetail() {
                   </div>
                 )}
 
+
               </div>
             </div>
           </div>
@@ -1394,1059 +1519,18 @@ export default function ProjectDetail() {
         </div>
       </div>
 
-      {/* Grand CMS Edit Modal overlay */}
-      <AnimatePresence>
-        {isEditModalOpen && (
-          <div className="fixed inset-0 bg-ink/80 z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="bg-paper border-4 border-ink shadow-[16px_16px_0px_rgba(0,0,0,1)] w-full max-w-4xl max-h-[90vh] overflow-y-auto relative"
-            >
-              
-              {/* Modal sticky header */}
-              <div className="bg-brand-acid border-b-2 border-ink p-5 sticky top-0 z-25 flex items-center justify-between select-none">
-                <div className="flex items-center gap-2">
-                  <Pencil className="w-5 h-5 text-ink animate-pulse" />
-                  <h3 className="font-mono text-xs font-black uppercase tracking-widest text-ink">
-                    CMS // Edit Research Pipeline ({project.slug})
-                  </h3>
-                </div>
-                <button 
-                  onClick={() => setIsEditModalOpen(false)}
-                  className="p-1 hover:bg-brand-orange border border-transparent hover:border-ink cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Edit Modal Form */}
-              <form onSubmit={handleEditModalSubmit} className="p-8 space-y-8">
-                
-                {/* Modal Title & Timeline Identifiers */}
-                <div className="space-y-4">
-                  <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange border-b border-ink/10 pb-1 select-none">
-                    1. Basic Identifiers & Brand
-                  </h4>
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Project Code</label>
-                      <input 
-                        type="text" 
-                        value={editForm.id}
-                        onChange={(e) => setEditForm({ ...editForm, id: e.target.value })}
-                        required
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Project Title</label>
-                      <input 
-                        type="text" 
-                        value={editForm.title}
-                        onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                        required
-                        className="w-full h-10 px-3 border border-ink font-serif font-bold text-xs focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">sub-brand Badge tag</label>
-                      <input 
-                        type="text" 
-                        value={editForm.tag}
-                        onChange={(e) => setEditForm({ ...editForm, tag: e.target.value })}
-                        required
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Project timeline / Year</label>
-                      <input 
-                        type="text" 
-                        value={editForm.year}
-                        onChange={(e) => setEditForm({ ...editForm, year: e.target.value })}
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Project Phase Status</label>
-                      <select 
-                        value={editForm.status}
-                        onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                        className="w-full h-10 px-3 border border-ink font-mono text-[10px] font-bold focus:outline-none"
-                      >
-                        <option value="Upcoming">Upcoming</option>
-                        <option value="Ongoing">Ongoing (Active)</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Draft">Draft</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Project Output Page / Website URL (Optional)</label>
-                      <input 
-                        type="url" 
-                        value={editForm.outputUrl || ''}
-                        onChange={(e) => setEditForm({ ...editForm, outputUrl: e.target.value })}
-                        placeholder="e.g. https://github.com/my-org/my-project"
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Link Button Label (e.g. 'View Repository')</label>
-                      <input 
-                        type="text" 
-                        value={editForm.outputLabel || ''}
-                        onChange={(e) => setEditForm({ ...editForm, outputLabel: e.target.value })}
-                        placeholder="Default: Project Output Page / Repository"
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Overview & Methodology Fields with Markdown toolbars */}
-                <div className="space-y-4">
-                  <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange border-b border-ink/10 pb-1 select-none">
-                    2. Research Parameters, Methodology, & Strategic Aims
-                  </h4>
-                  
-                  <div>
-                    <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Brief Description (Showcase Teaser)</label>
-                    <textarea 
-                      value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                      rows={2}
-                      className="w-full p-3 border border-ink font-mono text-xs focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Strategic Overview Fields with helper tools */}
-                  <div>
-                    <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Executive Mission Summary (Strategic Overview tab content)</label>
-                    <MarkdownHelperBar 
-                      textareaId="edit-longdescription-textarea" 
-                      value={editForm.longDescription}
-                      onChange={(val) => setEditForm({ ...editForm, longDescription: val })}
-                    />
-                    <MarkdownMediaHelper 
-                      onInsert={(text) => setEditForm({ ...editForm, longDescription: editForm.longDescription + text })}
-                    />
-                    <textarea 
-                      id="edit-longdescription-textarea"
-                      value={editForm.longDescription}
-                      onChange={(e) => setEditForm({ ...editForm, longDescription: e.target.value })}
-                      rows={5}
-                      className="w-full p-3 border border-ink font-mono text-xs focus:outline-none"
-                      placeholder="Explain why this project was instantiated, its political background, and community impact..."
-                    />
-                    {editForm.longDescription && (
-                      <div className="mt-2 p-3 border border-dashed border-ink bg-slate-50 max-h-[160px] overflow-y-auto">
-                        <label className="block text-[8px] font-black uppercase mb-1 text-brand-blue select-none">Live Overview Markdown Preview</label>
-                        <div 
-                          className="prose prose-sm max-w-none text-ink font-sans text-xs font-semibold"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(editForm.longDescription) }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Fieldwork Methodology Fields with helper tools */}
-                  <div>
-                    <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Technical Framework & Fieldwork Methodology</label>
-                    <MarkdownHelperBar 
-                      textareaId="edit-methodology-textarea" 
-                      value={editForm.methodology}
-                      onChange={(val) => setEditForm({ ...editForm, methodology: val })}
-                    />
-                    <MarkdownMediaHelper 
-                      onInsert={(text) => setEditForm({ ...editForm, methodology: editForm.methodology + text })}
-                    />
-                    <textarea 
-                      id="edit-methodology-textarea"
-                      value={editForm.methodology}
-                      onChange={(e) => setEditForm({ ...editForm, methodology: e.target.value })}
-                      rows={5}
-                      className="w-full p-3 border border-ink font-mono text-xs focus:outline-none"
-                      placeholder="Explain the technical workflow, data formats (e.g. Wav/JSON), annotation standard, etc..."
-                    />
-                    {editForm.methodology && (
-                      <div className="mt-2 p-3 border border-dashed border-ink bg-slate-50 max-h-[160px] overflow-y-auto">
-                        <label className="block text-[8px] font-black uppercase mb-1 text-brand-blue select-none">Live Methodology Markdown Preview</label>
-                        <div 
-                          className="prose prose-sm max-w-none text-ink font-sans text-xs font-semibold"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(editForm.methodology) }}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Aims list */}
-                  <div>
-                    <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Strategic Project Aims & Goals (Comma-separated list)</label>
-                    <input 
-                      type="text" 
-                      value={editForm.aims}
-                      onChange={(e) => setEditForm({ ...editForm, aims: e.target.value })}
-                      className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Strategic Project Impact Values (Requirement 1) */}
-                  <div>
-                    <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Strategic Project Impact Values (One impact item per line)</label>
-                    <textarea 
-                      value={editForm.impact}
-                      onChange={(e) => setEditForm({ ...editForm, impact: e.target.value })}
-                      rows={4}
-                      placeholder="e.g. Traditional archiving standard implemented&#10;Inclusion of 250+ tribal linguistic nodes&#10;Active research center partnership established"
-                      className="w-full p-2.5 border border-ink font-mono text-xs focus:outline-none"
-                    />
-                  </div>
-
-                  {/* Section 2.5: Alliances, Leadership & Recruitment (Requirements 4 & 5) */}
-                  <div className="space-y-6 pt-6 border-t border-ink/10">
-                    <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange border-b border-ink/10 pb-1 select-none">
-                      2.5. Organizational Alliances, Leadership &amp; Recruitment
-                    </h4>
-
-                    {/* Associated Centres (Requirement 4) */}
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-2 text-ink/75">Link Project to Specific Centres (Requirement 4)</label>
-                      <div className="flex flex-wrap gap-2">
-                        {dynamicCentres.map(c => (
-                          <label key={c.slug} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-ink bg-white cursor-pointer font-mono text-[9px] font-bold select-none hover:bg-brand-acid transition-colors">
-                            <input 
-                              type="checkbox"
-                              checked={modalAssociatedCentres.includes(c.slug)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setModalAssociatedCentres([...modalAssociatedCentres, c.slug]);
-                                } else {
-                                  setModalAssociatedCentres(modalAssociatedCentres.filter(slug => slug !== c.slug));
-                                }
-                              }}
-                              className="w-3 h-3 accent-brand-blue"
-                            />
-                            {c.shortName || c.name}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Project Directors (Requirement 4) */}
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-2 text-ink/75">Project Directors from Existing Staff (Requirement 4)</label>
-                      <div className="flex flex-wrap gap-2">
-                        {dynamicPeople.map(member => (
-                          <label key={member.slug} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-ink bg-white cursor-pointer font-mono text-[9px] font-bold select-none hover:bg-brand-acid transition-colors">
-                            <input 
-                              type="checkbox"
-                              checked={modalProjectDirectors.includes(member.slug)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setModalProjectDirectors([...modalProjectDirectors, member.slug]);
-                                } else {
-                                  setModalProjectDirectors(modalProjectDirectors.filter(slug => slug !== member.slug));
-                                }
-                              }}
-                              className="w-3 h-3 accent-brand-blue"
-                            />
-                            {member.fullName || member.name}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Project Staff (Requirement 4) */}
-                    <div className="border border-ink p-4 bg-white/70 space-y-4 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                      <div className="font-mono text-[9px] font-black uppercase text-brand-blue select-none border-b border-ink/5 pb-1">
-                        Add Project Staff from Existing Council Staff (Requirement 4)
-                      </div>
-                      <div className="flex flex-col sm:flex-row gap-3 items-end">
-                        <div className="flex-grow">
-                          <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Select Existing Staff Member</label>
-                          <select 
-                            value={newStaffSelection}
-                            onChange={(e) => setNewStaffSelection(e.target.value)}
-                            className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                          >
-                            <option value="">-- Choose Staff Member --</option>
-                            {dynamicPeople.map(member => (
-                              <option key={member.slug} value={member.slug}>{member.fullName || member.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (newStaffSelection) {
-                              if (!modalProjectStaffs.includes(newStaffSelection)) {
-                                setModalProjectStaffs([...modalProjectStaffs, newStaffSelection]);
-                              }
-                              setNewStaffSelection("");
-                            }
-                          }}
-                          className="h-8 px-4 border border-ink bg-brand-acid text-ink font-mono text-[9px] font-bold uppercase hover:bg-white cursor-pointer whitespace-nowrap"
-                        >
-                          + Add Staff
-                        </button>
-                      </div>
-
-                      {/* Register & Create New Person to Council & Project */}
-                      <div className="border border-brand-orange border-dashed p-3 bg-brand-orange/5 space-y-3 pt-4">
-                        <div className="text-[9px] font-mono font-bold text-brand-orange uppercase tracking-wider border-b border-brand-orange/20 pb-1 flex items-center justify-between select-none">
-                          <span>Create & Register New Person to Council Database</span>
-                          <span className="text-[8px] text-ink/40 font-normal normal-case">Adds automatically as Project Staff</span>
-                        </div>
-                        
-                        <div className="grid sm:grid-cols-2 gap-3 text-left">
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Full Name *</label>
-                            <input 
-                              type="text"
-                              value={newPersonFullName}
-                              onChange={(e) => {
-                                setNewPersonFullName(e.target.value);
-                                if (!newPersonName) {
-                                  setNewPersonName(e.target.value);
-                                }
-                              }}
-                              placeholder="e.g. Dr. Ramesh Kumar Sharma"
-                              className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Display/Short Name *</label>
-                            <input 
-                              type="text"
-                              value={newPersonName}
-                              onChange={(e) => setNewPersonName(e.target.value)}
-                              placeholder="e.g. Dr. Ramesh Kumar"
-                              className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Designation / Role *</label>
-                            <input 
-                              type="text"
-                              value={newPersonRole}
-                              onChange={(e) => setNewPersonRole(e.target.value)}
-                              placeholder="e.g. Project Researcher"
-                              className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Email Address *</label>
-                            <input 
-                              type="email"
-                              value={newPersonEmail}
-                              onChange={(e) => setNewPersonEmail(e.target.value)}
-                              placeholder="e.g. ramesh@council.edu"
-                              className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            />
-                          </div>
-
-                          <div className="sm:col-span-2">
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Brief Biography (Optional)</label>
-                            <textarea 
-                              value={newPersonBio}
-                              onChange={(e) => setNewPersonBio(e.target.value)}
-                              placeholder="Enter a short bio or research interests..."
-                              rows={2}
-                              className="w-full p-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase text-ink/80 mb-1">Database Category / Role Type</label>
-                            <select 
-                              value={newPersonBoardType}
-                              onChange={(e: any) => setNewPersonBoardType(e.target.value)}
-                              className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none bg-white"
-                            >
-                              <option value="staff">Council Staff / Researcher Only</option>
-                              <option value="board">Governing Board Member</option>
-                              <option value="rab">Research Advisory Board (RAB)</option>
-                            </select>
-                          </div>
-
-                          {createPersonError && (
-                            <div className="sm:col-span-2 text-[9px] text-brand-orange bg-brand-orange/5 font-mono font-semibold p-2 border border-brand-orange/20">
-                              Error: {createPersonError}
-                            </div>
-                          )}
-
-                          <div className="sm:col-span-2 flex justify-end">
-                            <button
-                              type="button"
-                              disabled={isCreatingPerson}
-                              onClick={handleCreateAndAddStaff}
-                              className="px-3 py-1.5 border border-ink bg-brand-blue text-white font-mono text-[9px] font-bold uppercase hover:bg-ink cursor-pointer disabled:opacity-50 transition-colors"
-                            >
-                              {isCreatingPerson ? "Creating Profile..." : "Create & Add As Staff"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="border-t border-ink/10 pt-3">
-                        <label className="block font-mono text-[8.5px] font-bold uppercase mb-1.5 text-ink/40 select-none">Current Project Staff Listed ({modalProjectStaffs.length})</label>
-                        <div className="space-y-1.5">
-                          {modalProjectStaffs.map((staff, idx) => {
-                            const matchedMember = dynamicPeople.find(m => m.slug === staff);
-                            const displayedText = matchedMember ? `${matchedMember.fullName || matchedMember.name} (Council Staff)` : staff;
-                            return (
-                              <div key={idx} className="flex justify-between items-center bg-white p-2 border border-ink text-[10px] font-mono animate-fade-in">
-                                <span>{displayedText}</span>
-                                <button 
-                                  type="button"
-                                  onClick={() => setModalProjectStaffs(modalProjectStaffs.filter((_, i) => i !== idx))}
-                                  className="text-brand-orange hover:text-ink font-black text-xs px-1 cursor-pointer"
-                                >
-                                  &times;
-                                </button>
-                              </div>
-                            );
-                          })}
-                          {modalProjectStaffs.length === 0 && (
-                            <p className="text-[10px] italic text-ink/40 font-mono text-left select-none">No staff currently added to project.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Job Advertisement Vacancies Board (Requirement 5) */}
-                    <div className="border border-ink p-4 bg-white/70 space-y-4 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                      <div className="font-mono text-[9px] font-black uppercase text-brand-orange select-none border-b border-ink/5 pb-1 flex items-center gap-1.5">
-                        Job Advertisement Board &amp; Application Manager (Requirement 5)
-                      </div>
-                      
-                      <div className="space-y-3 p-3 bg-white border border-ink font-mono text-[10px]">
-                        <span className="font-mono text-[8.5px] uppercase font-black text-brand-blue block border-b border-ink/5 pb-1">Advertise a New Vacancy / Recruitment Opportunity</span>
-                        <div className="grid sm:grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[8px] font-bold uppercase text-ink/75 mb-0.5">Job vacancy Title</label>
-                            <input 
-                              type="text"
-                              value={newPositionTitle}
-                              onChange={(e) => setNewPositionTitle(e.target.value)}
-                              placeholder="e.g. Lead Linguistic Scholar"
-                              className="w-full h-8 px-2 border border-ink focus:outline-none"
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[8px] font-bold uppercase text-ink/75 mb-0.5">Submit Application Deadline</label>
-                            <input 
-                              type="text"
-                              value={newPositionDeadline}
-                              onChange={(e) => setNewPositionDeadline(e.target.value)}
-                              placeholder="e.g. June 25, 2026 or Ongoing"
-                              className="w-full h-8 px-2 border border-ink focus:outline-none"
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="block text-[8px] font-bold uppercase text-ink/75 mb-0.5">Vacancy Role Description (field skills, qualifications, statement etc.)</label>
-                            <textarea 
-                              value={newPositionDescription}
-                              onChange={(e) => setNewPositionDescription(e.target.value)}
-                              placeholder="Describe the research responsibilities, community engagement..."
-                              rows={3}
-                              className="w-full p-2 border border-ink focus:outline-none"
-                            />
-                          </div>
-                          <div className="sm:col-span-2">
-                            <label className="block text-[8px] font-bold uppercase text-ink/75 mb-0.5">Application Detail URL Link (Optional - Default uses integrated portal)</label>
-                            <input 
-                              type="text"
-                              value={newPositionApplyLink}
-                              onChange={(e) => setNewPositionApplyLink(e.target.value)}
-                              placeholder="Leave blank to use CoDIN integrated application page"
-                              className="w-full h-8 px-2 border border-ink focus:outline-none"
-                            />
-                          </div>
-                        </div>
-                        <div className="flex justify-end pt-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (newPositionTitle && newPositionDescription) {
-                                const newPos = {
-                                  title: newPositionTitle,
-                                  description: newPositionDescription,
-                                  deadline: newPositionDeadline || 'Ongoing',
-                                  applyLink: newPositionApplyLink || ''
-                                };
-                                setModalOpenPositions([...modalOpenPositions, newPos]);
-                                setNewPositionTitle("");
-                                setNewPositionDescription("");
-                                setNewPositionDeadline("");
-                                setNewPositionApplyLink("");
-                              }
-                            }}
-                            className="px-3 py-1.5 border border-ink bg-brand-orange text-white font-black uppercase hover:bg-ink cursor-pointer text-[9px]"
-                          >
-                            Advertise Position &amp; Bulletin announcement &rarr;
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="pt-2 border-t border-ink/10">
-                        <label className="block font-mono text-[8.5px] font-bold uppercase mb-2 text-ink/45">Currently Live Advertised Job roles ({modalOpenPositions.length})</label>
-                        <div className="space-y-2">
-                          {modalOpenPositions.map((pos, pIdx) => (
-                            <div key={pIdx} className="bg-white border border-ink p-3 space-y-1.5 relative shadow-[2px_2px_0px_rgba(0,0,0,1)] text-[10px] font-mono text-left">
-                              <button 
-                                type="button"
-                                onClick={() => setModalOpenPositions(modalOpenPositions.filter((_, i) => i !== pIdx))}
-                                className="absolute top-2 right-1.5 text-brand-orange font-black text-sm px-2 cursor-pointer hover:text-ink"
-                                title="Remove job vacancy"
-                              >
-                                &times;
-                              </button>
-                              <div className="font-serif font-black text-sm text-ink">{pos.title}</div>
-                              <div className="text-[8px] text-brand-blue uppercase font-bold">Apply date deadline: {pos.deadline}</div>
-                              {pos.applyLink && <div className="text-[8px] text-brand-blue overflow-hidden text-ellipsis">Custom Details: {pos.applyLink}</div>}
-                              <div className="text-ink/65 line-clamp-2 uppercase tracking-tighter text-[8px] border-t border-ink/5 pt-1">{pos.description}</div>
-                            </div>
-                          ))}
-                          {modalOpenPositions.length === 0 && (
-                            <p className="font-mono text-[9px] text-ink/40 uppercase italic selection-none">No careers currently listed.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Multimedia uploads and URLs for Overview and Methodology */}
-                <div className="space-y-6">
-                  <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange border-b border-ink/10 pb-1 select-none">
-                    3. Multimedia Content & Media Pipeline
-                  </h4>
-
-                  {/* Strategic Overview media */}
-                  <div className="border border-ink p-4 space-y-4 bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                    <div className="font-mono text-[9px] font-bold uppercase text-brand-blue select-none">
-                      A. Strategic Overview Multimedia
-                    </div>
-                    
-                    {/* Images upload */}
-                    <div className="space-y-2">
-                      <label className="block font-mono text-[8.5px] font-bold uppercase">Overview Images</label>
-                      <div className="flex flex-wrap gap-3">
-                        {modalOverviewImages.map((img: string, i: number) => (
-                          <div key={i} className="relative w-20 aspect-video border border-ink overflow-hidden group">
-                            <img src={img} alt="" className="w-full h-full object-cover" />
-                            <button 
-                              type="button" 
-                              onClick={() => setModalOverviewImages(modalOverviewImages.filter((_, idx) => idx !== i))}
-                              className="absolute inset-0 bg-brand-orange/90 text-white font-mono text-[8px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer uppercase select-none"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="px-3 py-1.5 bg-slate-100 hover:bg-brand-acid border border-ink font-mono text-[9px] font-bold cursor-pointer flex items-center gap-1 select-none">
-                          <Upload className="w-3 h-3" />
-                          Upload Overview Image to Cloud
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={async (e) => {
-                              const f = e.target.files?.[0];
-                              if (!f) return;
-                              const reader = new FileReader();
-                              reader.onloadend = async () => {
-                                const cloudUrl = await uploadToCloudinary({ dataUrl: reader.result as string });
-                                if (cloudUrl) {
-                                  setModalOverviewImages([...modalOverviewImages, cloudUrl]);
-                                }
-                              };
-                              reader.readAsDataURL(f);
-                            }}
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* YouTube links */}
-                    <div className="space-y-2">
-                      <label className="block font-mono text-[8.5px] font-bold uppercase">Overview YouTube Videos</label>
-                      <div className="space-y-1.5">
-                        {modalOverviewYoutubeLinks.map((link: string, i: number) => (
-                          <div key={i} className="flex items-center justify-between bg-slate-50 border p-1.5 text-xs font-mono">
-                            <span className="truncate pr-4">{link}</span>
-                            <button 
-                              type="button" 
-                              onClick={() => setModalOverviewYoutubeLinks(modalOverviewYoutubeLinks.filter((_, idx) => idx !== i))}
-                              className="text-brand-orange hover:underline font-black cursor-pointer text-[9px] uppercase"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={newOverviewYoutube}
-                          onChange={(e) => setNewOverviewYoutube(e.target.value)}
-                          placeholder="Paste YouTube Video URL..."
-                          className="flex-1 h-8 px-2 border border-ink font-mono text-[10px]"
-                        />
-                        <button 
-                          type="button" 
-                          onClick={() => {
-                            if (!newOverviewYoutube) return;
-                            setModalOverviewYoutubeLinks([...modalOverviewYoutubeLinks, newOverviewYoutube]);
-                            setNewOverviewYoutube("");
-                          }}
-                          className="px-3 bg-ink hover:bg-brand-blue text-white hover:text-white font-mono text-[9px] font-bold border border-ink uppercase cursor-pointer"
-                        >
-                          + Add Link
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Methodology media */}
-                  <div className="border border-ink p-4 space-y-4 bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                    <div className="font-mono text-[9px] font-bold uppercase text-brand-blue select-none">
-                      B. Methodology Multimedia
-                    </div>
-                    
-                    {/* Images upload */}
-                    <div className="space-y-2">
-                      <label className="block font-mono text-[8.5px] font-bold uppercase">Methodology Images</label>
-                      <div className="flex flex-wrap gap-3">
-                        {modalMethodologyImages.map((img: string, i: number) => (
-                          <div key={i} className="relative w-20 aspect-video border border-ink overflow-hidden group">
-                            <img src={img} alt="" className="w-full h-full object-cover" />
-                            <button 
-                              type="button" 
-                              onClick={() => setModalMethodologyImages(modalMethodologyImages.filter((_, idx) => idx !== i))}
-                              className="absolute inset-0 bg-brand-orange/90 text-white font-mono text-[8px] font-bold flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer uppercase select-none"
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="px-3 py-1.5 bg-slate-100 hover:bg-brand-acid border border-ink font-mono text-[9px] font-bold cursor-pointer flex items-center gap-1 select-none">
-                          <Upload className="w-3 h-3" />
-                          Upload Methodology Image to Cloud
-                          <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={async (e) => {
-                              const f = e.target.files?.[0];
-                              if (!f) return;
-                              const reader = new FileReader();
-                              reader.onloadend = async () => {
-                                const cloudUrl = await uploadToCloudinary({ dataUrl: reader.result as string });
-                                if (cloudUrl) {
-                                  setModalMethodologyImages([...modalMethodologyImages, cloudUrl]);
-                                }
-                              };
-                              reader.readAsDataURL(f);
-                            }}
-                          />
-                        </label>
-                      </div>
-                    </div>
-
-                    {/* YouTube links */}
-                    <div className="space-y-2">
-                      <label className="block font-mono text-[8.5px] font-bold uppercase">Methodology YouTube Videos</label>
-                      <div className="space-y-1.5">
-                        {modalMethodologyYoutubeLinks.map((link: string, i: number) => (
-                          <div key={i} className="flex items-center justify-between bg-slate-50 border p-1.5 text-xs font-mono">
-                            <span className="truncate pr-4">{link}</span>
-                            <button 
-                              type="button" 
-                              onClick={() => setModalMethodologyYoutubeLinks(modalMethodologyYoutubeLinks.filter((_, idx) => idx !== i))}
-                              className="text-brand-orange hover:underline font-black cursor-pointer text-[9px] uppercase"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <input 
-                          type="text" 
-                          value={newMethodologyYoutube}
-                          onChange={(e) => setNewMethodologyYoutube(e.target.value)}
-                          placeholder="Paste YouTube Video URL..."
-                          className="flex-1 h-8 px-2 border border-ink font-mono text-[10px]"
-                        />
-                        <button 
-                          type="button" 
-                          onClick={() => {
-                            if (!newMethodologyYoutube) return;
-                            setModalMethodologyYoutubeLinks([...modalMethodologyYoutubeLinks, newMethodologyYoutube]);
-                            setNewMethodologyYoutube("");
-                          }}
-                          className="px-3 bg-ink hover:bg-brand-blue text-white hover:text-white font-mono text-[9px] font-bold border border-ink uppercase cursor-pointer"
-                        >
-                          + Add Link
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Agencies & Collaborators */}
-                <div className="space-y-4">
-                  <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange border-b border-ink/10 pb-1 select-none">
-                    4. Institutions & Agency Affiliation
-                  </h4>
-                  <div className="grid sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Funding Agency</label>
-                      <input 
-                        type="text" 
-                        value={editForm.fundingAgency}
-                        onChange={(e) => setEditForm({ ...editForm, fundingAgency: e.target.value })}
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block font-mono text-[8.5px] font-bold uppercase mb-1">Co-funding/Supporting Agency</label>
-                      <input 
-                        type="text" 
-                        value={editForm.collaboratingAgency}
-                        onChange={(e) => setEditForm({ ...editForm, collaboratingAgency: e.target.value })}
-                        className="w-full h-10 px-3 border border-ink font-mono text-xs focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 5: Strategic sub-pages & custom dossier tabs (renamed/expanded form Section 6) */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between border-b border-ink/10 pb-1">
-                    <h4 className="font-mono text-[10px] font-black uppercase text-brand-orange select-none">
-                      5. Strategic Sub-Pages & Custom Dossier Tabs
-                    </h4>
-                    <button 
-                      type="button" 
-                      onClick={addSubPage}
-                      className="px-2.5 py-1 border border-ink bg-brand-acid text-ink font-mono text-[9px] font-bold uppercase tracking-widest hover:bg-white flex items-center gap-1 cursor-pointer select-none"
-                    >
-                      + Instantiate Custom Dossier Tab
-                    </button>
-                  </div>
-
-                  <div className="space-y-6">
-                    {modalSubPages.map((tab, idx) => (
-                      <div 
-                        key={idx}
-                        draggable
-                        onDragStart={(e) => {
-                          e.dataTransfer.setData("text/plain", idx.toString());
-                        }}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          const dragIdx = parseInt(e.dataTransfer.getData("text/plain"));
-                          if (!isNaN(dragIdx) && dragIdx !== idx) {
-                            const list = [...modalSubPages];
-                            const draggedItem = list[dragIdx];
-                            list.splice(dragIdx, 1);
-                            list.splice(idx, 0, draggedItem);
-                            setModalSubPages(list);
-                          }
-                        }}
-                        className="border-2 border-ink p-5 space-y-4 bg-paper/10 relative shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:bg-paper/25 cursor-grab active:cursor-grabbing transition-colors"
-                      >
-                        <div className="flex justify-between items-center gap-4 border-b border-ink/10 pb-2">
-                          <span className="font-mono text-[10px] font-black text-brand-blue uppercase">Dossier Tab config #{idx+1} <span className="text-[8px] text-ink/40 font-normal normal-case ml-2">(⇅ drag-and-drop enabled)</span></span>
-                          <div className="flex items-center gap-1.5 ml-auto">
-                            <button 
-                              type="button" 
-                              disabled={idx === 0} 
-                              onClick={() => handleMoveSubPage(idx, 'up')}
-                              className="p-1 px-2 border border-ink hover:bg-brand-orange text-[10px] font-bold font-mono uppercase bg-white disabled:opacity-20 disabled:hover:bg-white select-none cursor-pointer"
-                              title="Move Up"
-                            >
-                              &uarr;
-                            </button>
-                            <button 
-                              type="button" 
-                              disabled={idx === modalSubPages.length - 1} 
-                              onClick={() => handleMoveSubPage(idx, 'down')}
-                              className="p-1 px-2 border border-ink hover:bg-brand-orange text-[10px] font-bold font-mono uppercase bg-white disabled:opacity-20 disabled:hover:bg-white select-none cursor-pointer"
-                              title="Move Down"
-                            >
-                              &darr;
-                            </button>
-                            <button 
-                              type="button"
-                              onClick={() => removeSubPage(idx)}
-                              className="p-1 hover:bg-brand-orange border border-transparent hover:border-ink rounded cursor-pointer ml-1"
-                            >
-                              <Trash2 className="w-4 h-4 text-ink" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="grid sm:grid-cols-4 gap-4">
-                          <div className="sm:col-span-2">
-                            <label className="block font-mono text-[8px] font-bold uppercase mb-1">Tab Label / Title</label>
-                            <input 
-                              type="text" 
-                              value={tab.title}
-                              onChange={(e) => updateSubPageCore(idx, 'title', e.target.value)}
-                              placeholder="e.g. Royalties Framework" 
-                              required
-                              className="w-full h-9 px-2 border border-ink font-mono text-[10px]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase mb-1">Unique Slug (Tab Key)</label>
-                            <input 
-                              type="text" 
-                              value={tab.slug}
-                              onChange={(e) => updateSubPageCore(idx, 'slug', e.target.value)}
-                              placeholder="e.g. royalties" 
-                              required
-                              className="w-full h-9 px-2 border border-ink font-mono text-[10px]"
-                            />
-                          </div>
-                          <div>
-                            <label className="block font-mono text-[8px] font-bold uppercase mb-1">Tab Type</label>
-                            <select 
-                              value={tab.type}
-                              onChange={(e) => updateSubPageCore(idx, 'type', e.target.value)}
-                              className="w-full h-9 px-2 border border-ink font-mono text-[10px]"
-                            >
-                              <option value="markdown">MARKDOWN TEXT</option>
-                              <option value="list">TABULAR DATAFRAME LIST</option>
-                              <option value="events">RELATED EVENTS</option> {/* Added Related Events as dynamic subpage tab type */}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Markdown rendering details with toolbar helper and preview */}
-                        {tab.type === 'markdown' && (
-                          <div className="space-y-3">
-                            <div>
-                              <label className="block font-mono text-[8px] font-bold uppercase mb-1">Teaser introductory accent</label>
-                              <input 
-                                type="text"
-                                value={tab.content?.teaser || ''}
-                                onChange={(e) => updateSubPageMarkdownContent(idx, 'teaser', e.target.value)}
-                                placeholder="Teaser highlight summary sentence..."
-                                className="w-full h-9 px-2 border border-ink font-mono text-[10px]"
-                              />
-                            </div>
-                            <div>
-                              <label className="block font-mono text-[8px] font-bold uppercase mb-1">Markdown Body (Main Content)</label>
-                              <MarkdownHelperBar 
-                                textareaId={`edit-subpage-markdown-${idx}`} 
-                                value={tab.content?.markdown || ''}
-                                onChange={(val) => updateSubPageMarkdownContent(idx, 'markdown', val)}
-                              />
-                              <MarkdownMediaHelper 
-                                onInsert={(text) => updateSubPageMarkdownContent(idx, 'markdown', (tab.content?.markdown || '') + text)}
-                              />
-                              <textarea 
-                                id={`edit-subpage-markdown-${idx}`}
-                                value={tab.content?.markdown || ''}
-                                onChange={(e) => updateSubPageMarkdownContent(idx, 'markdown', e.target.value)}
-                                rows={4}
-                                placeholder="Write clean markdown or structured paragraphs..."
-                                required
-                                className="w-full p-2 border border-ink font-mono text-[10px] focus:outline-none"
-                              />
-                              {tab.content?.markdown && (
-                                <div className="mt-2 p-3 border border-dashed border-ink bg-slate-50 max-h-[140px] overflow-y-auto">
-                                  <label className="block text-[8px] font-black uppercase mb-1 text-brand-blue select-none">Live Tab Markdown Preview</label>
-                                  <div 
-                                    className="prose prose-sm max-w-none text-ink font-sans text-xs font-semibold"
-                                    dangerouslySetInnerHTML={{ __html: renderMarkdown(tab.content.markdown) }}
-                                  />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* List rendering details */}
-                        {tab.type === 'list' && (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between select-none">
-                              <span className="font-mono text-[8px] font-bold uppercase text-ink/50">Tabular Dataset list</span>
-                              <button 
-                                type="button"
-                                onClick={() => addSubPageListItem(idx)}
-                                className="px-2.5 py-1 border border-ink bg-brand-acid text-ink font-mono text-[9px] font-bold uppercase hover:bg-white select-none cursor-pointer"
-                              >
-                                + Add Dataset Row
-                              </button>
-                            </div>
-
-                            <div className="space-y-4">
-                              {(Array.isArray(tab.content) ? tab.content : []).map((row: any, rIdx: number) => (
-                                <div key={rIdx} className="bg-white p-4 border border-ink space-y-3 relative shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                                  <div className="flex justify-between items-center select-none border-b border-ink/10 pb-1">
-                                    <span className="font-mono text-[8px] uppercase tracking-wider text-brand-blue font-bold">List Row #{rIdx + 1}</span>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => removeSubPageListItem(idx, rIdx)}
-                                      className="text-brand-orange hover:text-ink font-bold font-mono text-[9px] uppercase flex items-center gap-1"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" /> Remove row
-                                    </button>
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                    <div>
-                                      <label className="block text-[8px] font-mono font-bold uppercase text-ink/70 mb-0.5">Name / Label</label>
-                                      <input 
-                                        type="text" 
-                                        value={row.name || ''} 
-                                        onChange={(e) => updateSubPageListItem(idx, rIdx, 'name', e.target.value)}
-                                        placeholder="Collaborating Partner name"
-                                        required
-                                        className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-[8px] font-mono font-bold uppercase text-ink/70 mb-0.5">Agency / Affiliation</label>
-                                      <input 
-                                        type="text" 
-                                        value={row.affiliation || ''} 
-                                        onChange={(e) => updateSubPageListItem(idx, rIdx, 'affiliation', e.target.value)}
-                                        placeholder="e.g. Tribal Research Centre"
-                                        className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none"
-                                      />
-                                    </div>
-                                    <div>
-                                      <label className="block text-[8px] font-mono font-bold uppercase text-ink/70 mb-0.5">Sovereignty Role / Value</label>
-                                      <input 
-                                        type="text" 
-                                        value={row.role || ''} 
-                                        onChange={(e) => updateSubPageListItem(idx, rIdx, 'role', e.target.value)}
-                                        placeholder="e.g. Institutional Collaborator"
-                                        required
-                                        className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                                    <div>
-                                      <label className="block text-[8px] font-mono font-bold uppercase text-ink/70 mb-0.5">Web Link / Profile URL (Optional)</label>
-                                      <input 
-                                        type="text" 
-                                        value={row.url || ''} 
-                                        onChange={(e) => updateSubPageListItem(idx, rIdx, 'url', e.target.value)}
-                                        placeholder="e.g. https://www.trc.gov.in"
-                                        className="w-full h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label className="block text-[8px] font-mono font-bold uppercase text-ink/70 mb-0.5">Logo or Photograph URL</label>
-                                      <div className="flex gap-2 items-center">
-                                        <input 
-                                          type="text" 
-                                          value={row.photoUrl || ''} 
-                                          onChange={(e) => updateSubPageListItem(idx, rIdx, 'photoUrl', e.target.value)}
-                                          placeholder="https://... or upload photo"
-                                          className="flex-grow h-8 px-2 border border-ink font-mono text-[10px] focus:outline-none"
-                                        />
-                                        <label className="h-8 px-2 border border-ink bg-white font-mono text-[8px] font-black uppercase text-center flex items-center justify-center cursor-pointer select-none whitespace-nowrap hover:bg-brand-acid hover:text-ink shrink-0">
-                                          <span>Upload photo 📸</span>
-                                          <input 
-                                            type="file" 
-                                            accept="image/*"
-                                            className="hidden"
-                                            onChange={(e) => {
-                                              const file = e.target.files?.[0];
-                                              if (!file) return;
-                                              const reader = new FileReader();
-                                              reader.onloadend = async () => {
-                                                const dataUrl = reader.result as string;
-                                                const cloudUrl = await uploadToCloudinary({ dataUrl });
-                                                if (cloudUrl) {
-                                                  updateSubPageListItem(idx, rIdx, 'photoUrl', cloudUrl);
-                                                }
-                                              };
-                                              reader.readAsDataURL(file);
-                                            }}
-                                          />
-                                        </label>
-                                      </div>
-                                      {row.photoUrl && (
-                                        <div className="mt-1 flex items-center gap-1.5">
-                                          <img src={row.photoUrl} alt="" className="w-8 h-8 object-cover border border-ink" referrerPolicy="no-referrer" />
-                                          <span className="text-[7.5px] font-mono text-ink/50 uppercase select-none">Web Photograph Preview Linked</span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                              {(!Array.isArray(tab.content) || tab.content.length === 0) && (
-                                <p className="text-[9px] font-mono text-ink/40 uppercase italic select-none">No dataset rows configured. Click add row.</p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Dynamic Events rendering instruction */}
-                        {tab.type === 'events' && (
-                          <div className="p-3 border border-ink bg-white rounded font-mono text-[9.5px] text-brand-blue uppercase select-none leading-relaxed">
-                            💡 Related Events: Instantiating this dynamic dossier page lists and links to all academic summits, research fieldwork, workshops, and courses associated with this project automatically. No manual entries are needed.
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {modalSubPages.length === 0 && (
-                      <p className="text-[10px] font-mono text-ink/40 uppercase italic select-none">No custom dossier pages compiled yet.</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Save Footer button bar */}
-                <div className="pt-6 border-t-2 border-ink flex justify-end gap-3 sticky bottom-0 bg-paper p-4 z-20">
-                  <button 
-                    type="button"
-                    onClick={() => setIsEditModalOpen(false)}
-                    className="h-12 px-6 border border-ink bg-white font-mono text-xs font-bold uppercase hover:bg-brand-orange tracking-widest cursor-pointer inline-flex items-center"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    type="submit"
-                    className="h-12 px-8 border border-ink bg-ink text-paper font-mono text-xs font-black uppercase tracking-widest hover:bg-brand-acid hover:text-ink transition-all shadow-[4px_4px_0px_rgba(0,0,0,1)] inline-flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    Save Pipeline Dossier
-                  </button>
-                </div>
-
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Unified Project CMS Modal */}
+      <ProjectFormModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        projectToEdit={project}
+        token={user?.token}
+        onSuccess={(updatedProject) => {
+          setProject(updatedProject);
+          setIsEditModalOpen(false);
+          loadProject();
+        }}
+      />
 
       {/* Integrated job application modal portal */}
       <AnimatePresence>

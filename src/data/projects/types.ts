@@ -16,6 +16,20 @@ export interface RelatedLink {
   url: string;
 }
 
+export interface ProjectPartnerAgency {
+  name: string;
+  website?: string;
+  logo?: string;
+  role?: string;
+}
+
+export interface ProjectCollaborator {
+  name: string;
+  website?: string;
+  logo?: string;
+  role?: string;
+}
+
 export interface Project {
   slug: string;
   id: string; // e.g., "PROJ-001"
@@ -35,9 +49,24 @@ export interface Project {
   projectStaffs?: string[];
   fundingAgency?: string; // database property for searching/filtering
   collaboratingAgency?: string; // database property for searching/filtering
+  fundingAgencies?: ProjectPartnerAgency[];
+  supportingAgencies?: ProjectPartnerAgency[];
+  collaborators?: ProjectCollaborator[];
   year?: string; // database property for searching/filtering
   startDate?: string; // e.g. "2024-01-01"
   endDate?: string;   // e.g. "2025-12-31"
   keywords?: string[]; // database property for searching/filtering
   subPages?: ProjectSubPage[]; // Rich, modular dossier pages config
+  openPositions?: Array<{
+    title: string;
+    description: string;
+    deadline: string;
+    applyLink: string;
+  }>;
+  overviewImages?: string[];
+  overviewYoutubeLinks?: string[];
+  methodologyImages?: string[];
+  methodologyYoutubeLinks?: string[];
+  outputUrl?: string;
+  outputLabel?: string;
 }

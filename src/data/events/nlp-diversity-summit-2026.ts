@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Event } from './types';
+import { Event } from './types.ts';
 
 export const nlpDiversitySummit2026: Event = {
   slug: "nlp-diversity-summit-2026",
@@ -40,7 +40,7 @@ export const nlpDiversitySummit2026: Event = {
   Technological pathways to index, classify, and host historic field recordings under fair semantic access schemas.
 
 ### Submission Guidelines
-Abstracts should not exceed 2 pages including references. Please format using the standard CoDIN ACL-style template. All submissions must be anonymous for double-blind review. Accepted papers will be indexed in the South Asian Digital Language Library.`
+Abstracts should not exceed 2 pages including references. Please format using the standard [CoDIN ACL-Style Paper Template](https://aclweb.org) or refer to the [Author Guidelines & Kit](https://github.com). All submissions must be anonymous for double-blind review. Accepted papers will be indexed in the [South Asian Digital Language Library](https://codin.org.in). For questions regarding track alignment, review our [Call for Papers Portal](https://codin.org.in) or email <summit2026@codin.org.in>.`
       }
     },
     {

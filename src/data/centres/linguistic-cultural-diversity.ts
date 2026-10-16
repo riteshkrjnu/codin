@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { Centre } from './types';
+import { Centre } from './types.ts';
 
 export const linguisticCulturalDiversity: Centre = {
   slug: "linguistic-cultural-diversity",

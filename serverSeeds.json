@@ -1,0 +1,1338 @@
+{
+  "events": [
+    {
+      "slug": "nlp-diversity-summit-2026",
+      "title": "National Summit on Language Variety & Digital Inclusivity",
+      "type": "Conference",
+      "dates": "July 12 - July 14, 2026",
+      "location": "Informatics Hall, Bengaluru & Online",
+      "description": "Bridging tech enterprises and field researchers to standardise bias-free corpus collection models.",
+      "longDescription": "The National Summit brings together leading computational linguists, tribal representation boards, AI engineers, and state policy makers under one roof. Focused heavily on high-fidelity benchmarking standards, the summit establishes the core requirements for South Asia's digital language readiness in the era of foundation models.",
+      "image": "https://images.unsplash.com/photo-1540575467063-178a50c2df87?auto=format&fit=crop&q=80&w=1200",
+      "status": "Upcoming",
+      "associatedCentres": [
+        "diversity-ai-nlp"
+      ],
+      "associatedPeople": [
+        "bornini",
+        "ritesh"
+      ],
+      "associatedProjects": [
+        "kailash"
+      ],
+      "schedule": [
+        {
+          "time": "Day 1, 09:30 AM",
+          "topic": "Opening Address: The Middle Mile of Cultural Data",
+          "speaker": "Dr. Bornini Lahiri"
+        },
+        {
+          "time": "Day 1, 11:30 AM",
+          "topic": "Benchmarking Foundation Models on Low-Resource Phonetics",
+          "speaker": "Ritesh Kumar"
+        },
+        {
+          "time": "Day 2, 02:00 PM",
+          "topic": "Ethical Royalties Panel: Cooperative Data Ownership"
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "announcement",
+          "title": "Announcement & Call for Papers",
+          "icon": "Megaphone",
+          "type": "markdown",
+          "content": {
+            "teaser": "We invite submissions addressing grammatical diversity, corpus standardisation, bio-phonetics, and digital equity in South Asian languages.",
+            "markdown": "### Core Tracks\n- **Track 1: Low-Resource Speech & Language Modeling** \n  Methods for training automated models on under-represented phonetics, low-resource syntax, and code-mixed formats.\n- **Track 2: Ethical Corpus Collection & Royalties** \n  Legal frameworks, policy, and mechanisms for rewarding minoritised communities for language contributions.\n- **Track 3: Digital Heritage & Semantic Archiving** \n  Technological pathways to index, classify, and host historic field recordings under fair semantic access schemas.\n\n### Submission Guidelines\nAbstracts should not exceed 2 pages including references. Please format using the standard [CoDIN ACL-Style Paper Template](https://aclweb.org) or refer to the [Author Guidelines & Kit](https://github.com). All submissions must be anonymous for double-blind review. Accepted papers will be indexed in the [South Asian Digital Language Library](https://codin.org.in). For questions regarding track alignment, review our [Call for Papers Portal](https://codin.org.in) or email <summit2026@codin.org.in>."
+          }
+        },
+        {
+          "slug": "important-dates",
+          "title": "Important Dates",
+          "icon": "Calendar",
+          "type": "dates",
+          "content": [
+            {
+              "label": "Abstract Submission Deadline",
+              "date": "April 15, 2026",
+              "highlighted": true
+            },
+            {
+              "label": "Notification of Acceptance",
+              "date": "May 20, 2026"
+            },
+            {
+              "label": "Camera-Ready Papers Due",
+              "date": "June 10, 2026"
+            },
+            {
+              "label": "Main Summit Sessions",
+              "date": "July 12 - July 14, 2026",
+              "Footnote": " Bengaluru & Hybrid Broadcast Options"
+            }
+          ]
+        },
+        {
+          "slug": "schedule-details",
+          "title": "Program Schedule",
+          "icon": "Clock",
+          "type": "schedule",
+          "content": [
+            {
+              "time": "09:00 AM - 10:30 AM",
+              "topic": "Registration & Morning Tea // Assembly",
+              "speaker": "Executive Secretariat"
+            },
+            {
+              "time": "10:30 AM - 12:00 PM",
+              "topic": "Keynote Lecture: Linguistic Diversity as AI Strategy",
+              "speaker": "Dr. Bornini Lahiri"
+            },
+            {
+              "time": "01:30 PM - 03:00 PM",
+              "topic": "Technical Session: Phoneme Annotation Pipeline",
+              "speaker": "Ritesh Kumar"
+            },
+            {
+              "time": "03:30 PM - 05:00 PM",
+              "topic": "Panel: Governance & Sovereign Localised LLMs",
+              "speaker": "Panelists"
+            }
+          ]
+        },
+        {
+          "slug": "registration",
+          "title": "Registration Details",
+          "icon": "CreditCard",
+          "type": "registration",
+          "content": {
+            "deadline": "July 01, 2026",
+            "buttonText": "Register for Summit 2026",
+            "buttonLink": "mailto:registration@codin.org.in?subject=Registration: NLP Diversity Summit 2026",
+            "fees": [
+              {
+                "category": "Indian Academic Authors & Researchers",
+                "fee": "INR 2,500"
+              },
+              {
+                "category": "International Academic Scholars",
+                "fee": "USD $100"
+              },
+              {
+                "category": "Tech Enterprises / Industry Professionals",
+                "fee": "INR 12,000"
+              },
+              {
+                "category": "Community Field Delegates & Students",
+                "fee": "Complimentary (RSVP Required)"
+              }
+            ],
+            "instructions": [
+              "Registration fee includes absolute access to all paper presentations, lunch, summit kits, and printed proceeding dockets.",
+              "W2M certified data annotators and field team leaders can claim complimentary delegates' passes through their sponsor links.",
+              "Online-only passes are free but prior registration is mandatory."
+            ]
+          }
+        },
+        {
+          "slug": "accepted-papers",
+          "title": "Accepted Papers",
+          "icon": "BookOpen",
+          "type": "list",
+          "content": [
+            {
+              "title": "Aligning Low-Resource Accents in Chhotanagpur Dialects through Acoustic Anchors",
+              "authors": "Subhadra Oraon, Ritesh Kumar",
+              "abstract": "We introduce a novel self-supervised alignment algorithm tailored for non-standardized phonetic dialects, reducing relative word-error-rate under zero-shot setups."
+            },
+            {
+              "title": "A Contractual Framework for Community Language Asset Co-Ownership",
+              "authors": "Adv. Meera Sen, Dr. Bornini Lahiri",
+              "abstract": "Proposes an atomic operational guidelines template mapping physical collective consent to automated smart license metadata tags in sovereign linguistic archives."
+            }
+          ]
+        },
+        {
+          "slug": "logistics",
+          "title": "Logistic Information",
+          "icon": "MapPin",
+          "type": "logistics",
+          "content": {
+            "venue": "Informatics Hall, IISc Campus Extension, Bengaluru, India",
+            "accommodation": "Registered participants can reserve discounted rooms at the Centenary Visitors House (CVH), IISc. Email reservations@codin.org.in before June 1.",
+            "travel": "Bengaluru (Kempegowda International Airport) is connected globally. Cabs to CVH or IISc take around 45-60 minutes.",
+            "visa": "International travelers are advised to apply for an e-Conference Visa using the invitation letter issued by CoDIN Secretariat upon successful registration."
+          }
+        },
+        {
+          "slug": "committees",
+          "title": "Organising Committees",
+          "icon": "Users",
+          "type": "committees",
+          "content": [
+            {
+              "name": "Program Committee",
+              "members": [
+                {
+                  "name": "Dr. Bornini Lahiri",
+                  "role": "General Co-Chair",
+                  "affiliation": "CoDIN"
+                },
+                {
+                  "name": "Ritesh Kumar",
+                  "role": "Technical Program Chair",
+                  "affiliation": "Centre for Diversity in AI & NLP"
+                }
+              ]
+            },
+            {
+              "name": "Local Organizing Committee",
+              "members": [
+                {
+                  "name": "Karthick Ramanathan",
+                  "role": "Logistics Coordinator",
+                  "affiliation": "CoDIN Bengaluru Desk"
+                },
+                {
+                  "name": "Siddharth Hegde",
+                  "role": "Sponsorship & Outreach Manager",
+                  "affiliation": "Informatics Labs"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "contact",
+          "title": "Contact Desk",
+          "icon": "Mail",
+          "type": "contact",
+          "content": [
+            {
+              "name": "NLP Summit Secretariate",
+              "designation": "General Queries & Logistics",
+              "email": "summit2026@codin.org.in",
+              "phone": "+91 80 2360 0122"
+            },
+            {
+              "name": "Technical Desk",
+              "designation": "Paper Submissions Helper",
+              "email": "tech-secretariat@codin.org.in"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "linguistic-mapping-sprint-2026",
+      "title": "Linguistic Mapping & Dialect Annotation Sprint (Spring 2026)",
+      "type": "Workshop",
+      "dates": "May 18 - May 28, 2026",
+      "location": "Centre for Diversity, Bengaluru",
+      "description": "An active hacking sprint standardising acoustic metadata profiles for minoritised communities in South India.",
+      "longDescription": "This collaborative, high-intensity sprint brings together active W2M annotation scholars and AI engineers to map phonetic boundaries. As part of Project Kailash, we are actively processing and clean-labelling over 120 hours of forest dialect recordings.",
+      "image": "https://images.unsplash.com/photo-1531482615713-2afd69097998?auto=format&fit=crop&q=80&w=1200",
+      "status": "Ongoing",
+      "associatedCentres": [
+        "diversity-ai-nlp"
+      ],
+      "associatedPeople": [
+        "ritesh",
+        "bornini"
+      ],
+      "associatedProjects": [
+        "kailash"
+      ],
+      "schedule": [
+        {
+          "time": "09:00 AM",
+          "topic": "Daily Scrum & Annotation Diagnostics"
+        },
+        {
+          "time": "02:00 PM",
+          "topic": "Pair-wise Phonetic Labeling Diagnostics"
+        },
+        {
+          "time": "05:00 PM",
+          "topic": "Commit and Validation Checkpoint"
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "sprint-call",
+          "title": "Hacking Sprint Guidelines",
+          "icon": "Code",
+          "type": "markdown",
+          "content": {
+            "teaser": "Join us in Bengaluru or online as we accelerate the validation of low-resource dialect phonemes.",
+            "markdown": "### Active Annotation Targets\n- **Toda & Kota Consonants**: Reviewing high-frequency spectral components.\n- **Kadar Vowel Space Mapping**: Cleaning sound artifacts on 40 hours of forest recordings.\n- **ELAN Timeline Splicing**: Merging community metadata into global foundation model templates.\n\n### Participation Channels\nCurrently open to verified W2M Certified annotators and research scholars. Participation is hybrid."
+          }
+        },
+        {
+          "slug": "dates",
+          "title": "Sprint Milestones",
+          "icon": "Clock",
+          "type": "dates",
+          "content": [
+            {
+              "label": "Warmup Sessions",
+              "date": "May 15, 2026"
+            },
+            {
+              "label": "Sprint Launch",
+              "date": "May 18, 2026",
+              "highlighted": true
+            },
+            {
+              "label": "Midway Peer Refinement Review",
+              "date": "May 23, 2026"
+            },
+            {
+              "label": "Sprint Wrapup & Archive Commit",
+              "date": "May 28, 2026"
+            }
+          ]
+        },
+        {
+          "slug": "registration",
+          "title": "Sprint Registration Desk",
+          "icon": "User",
+          "type": "registration",
+          "content": {
+            "deadline": "May 15, 2026",
+            "buttonText": "Active Participation",
+            "buttonLink": "mailto:sprint2026@codin.org.in?subject=Sprint Registration Query",
+            "fees": [
+              {
+                "category": "Enrolled Academy Students",
+                "fee": "Complimentary"
+              },
+              {
+                "category": "Industry Contributors",
+                "fee": "INR 5,000"
+              }
+            ],
+            "instructions": [
+              "Registration remains open for online contributors who already hold standard W2M credentials.",
+              "On-site seats are strictly capped at 25 participants."
+            ]
+          }
+        },
+        {
+          "slug": "organizers",
+          "title": "Sprint Leads",
+          "icon": "Users",
+          "type": "committees",
+          "content": [
+            {
+              "name": "Sprint Coordinators",
+              "members": [
+                {
+                  "name": "Ritesh Kumar",
+                  "role": "Sprint Organizer",
+                  "affiliation": "Centre for Diversity in AI & NLP"
+                },
+                {
+                  "name": "Dr. Bornini Lahiri",
+                  "role": "Linguistics Advisor",
+                  "affiliation": "CoDIN"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "field-archiving-kancheepuram-2025",
+      "title": "Intensive Archiving Field Workshop: Recovery of Epigraphs and Folk Songs",
+      "type": "Workshop",
+      "dates": "November 03 - November 08, 2025",
+      "startDate": "2025-11-03",
+      "endDate": "2025-11-08",
+      "location": "Cultural Centre, Kancheepuram",
+      "description": "Hands-on training in photogrammetry, high-definition oral tradition recording, and digital sound systems.",
+      "longDescription": "This intensive field workshop focuses directly on on-site recovery of fading manuscript pages and community-hosted oral folk lyric recordings. Participants undergo professional training with specialized multispectral scanners, portable acoustic booths, and our custom Tholkudi open-access metadata framework.",
+      "image": "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=1200",
+      "status": "Archived",
+      "associatedCentres": [
+        "digital-preservation",
+        "linguistic-cultural-diversity"
+      ],
+      "associatedPeople": [
+        "karthick",
+        "bornini"
+      ],
+      "associatedProjects": [
+        "tholkudi",
+        "suvadugal"
+      ],
+      "schedule": [
+        {
+          "time": "Day 1, 09:00 AM",
+          "topic": "Acoustic Insulation in Rural & Forest Terrain",
+          "speaker": "Dr. Bornini Lahiri"
+        },
+        {
+          "time": "Day 2, 11:30 AM",
+          "topic": "Multispectral Manuscript Photography & Color Correction",
+          "speaker": "Karthick Ramanathan"
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "participation",
+          "title": "Call for Participation",
+          "icon": "UserCheck",
+          "type": "markdown",
+          "content": {
+            "teaser": "We are seeking applications from early career researchers, heritage museum archivists, and local conservation volunteers looking to master digital restoration.",
+            "markdown": "### Practical Syllabus Modules\n- **Acoustic Ingestion**: Fieldwork audio diagnostics, noise elimination, and portable recording setups.\n- **Multispectral Capture**: Restoring degraded copper plates and palm-leaf manuscripts using physical camera colorimetry.\n- **Tholkudi Metadata Core**: Standardized documentation tags for physical relics, dialect recordings, and oral histories.\n\n### Eligibility Criteria\nOpen to postgraduate students, scholars of archaeology, history, or linguistics, and regional grasswork volunteers. No prior coding experience required."
+          }
+        },
+        {
+          "slug": "timeline",
+          "title": "Timeline & Dates",
+          "icon": "CalendarRange",
+          "type": "dates",
+          "content": [
+            {
+              "label": "Application Intake Launch",
+              "date": "August 10, 2025"
+            },
+            {
+              "label": "Application Submission Deadline",
+              "date": "September 15, 2025"
+            },
+            {
+              "label": "Selected Participants List Announced",
+              "date": "September 25, 2025"
+            },
+            {
+              "label": "Workshop Commencement",
+              "date": "November 03, 2025",
+              "highlighted": true
+            }
+          ]
+        },
+        {
+          "slug": "registration-details",
+          "title": "Registration Protocols",
+          "icon": "Award",
+          "type": "registration",
+          "content": {
+            "deadline": "September 15, 2025",
+            "buttonText": "N/A - Intake Completed",
+            "buttonLink": "#",
+            "fees": [
+              {
+                "category": "Academic Scholars / Researchers",
+                "fee": "INR 1,500 (Subsidized)"
+              },
+              {
+                "category": "Government/Museum Delegated Officials",
+                "fee": "INR 4,000"
+              },
+              {
+                "category": "Local Community Custodians & Students",
+                "fee": "Complimentary"
+              }
+            ],
+            "instructions": [
+              "Workshop registration carries full lodging boarding and scanning kits.",
+              "Participants who successfully complete all 6 physical modules are awarded the Official Tholkudi Field Conservator Certificate."
+            ]
+          }
+        },
+        {
+          "slug": "participants",
+          "title": "Accepted Participant List",
+          "icon": "Milestone",
+          "type": "list",
+          "content": [
+            {
+              "name": "Meenakshi Sundaram",
+              "role": "Graduate Fellow",
+              "affiliation": "University of Madras"
+            },
+            {
+              "name": "Anupam Goswami",
+              "role": "Lead Archivist",
+              "affiliation": "Assam Manuscripts Library"
+            },
+            {
+              "name": "Suresh Perumal",
+              "role": "Independent Epigrapher",
+              "affiliation": "Kancheepuram Heritage Collective"
+            }
+          ]
+        },
+        {
+          "slug": "venue-logistics",
+          "title": "Venue & Lodging",
+          "icon": "Compass",
+          "type": "logistics",
+          "content": {
+            "venue": "Cultural Centre Conference Enclave, Kancheepuram, Tamil Nadu",
+            "accommodation": "Hostel rooms are reserved at the Kancheepuram Devalaya Guest Enclave. Rates are covered by the subsidized registration option.",
+            "travel": "Kancheepuram is connected to Chennai Airport via NH-48 (roughly 2 hours ride). Heavy frequency bus service operates from CMBT Chennai.",
+            "visa": "Not applicable for national participants. International applicants must acquire an e-Visa through standard research channels."
+          }
+        },
+        {
+          "slug": "organizer-committees",
+          "title": "Coordination Teams",
+          "icon": "ShieldAlert",
+          "type": "committees",
+          "content": [
+            {
+              "name": "Field Coordination Board",
+              "members": [
+                {
+                  "name": "Karthick Ramanathan",
+                  "role": "On-site Field Lead",
+                  "affiliation": "Centre for Digital Preservation"
+                },
+                {
+                  "name": "Dr. Bornini Lahiri",
+                  "role": "Academic Advisor",
+                  "affiliation": "CL-CD"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "help-desk",
+          "title": "Reach Out Liaison",
+          "icon": "Contact",
+          "type": "contact",
+          "content": [
+            {
+              "name": "Kancheepuram Desk Team",
+              "designation": "On-site Help Center",
+              "email": "kanchi-workshop@codin.org.in"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "w2m-residential-ooty-2025",
+      "title": "W2M Intensive Field Methods Residency (Spring Cohort)",
+      "type": "W2M Residential Course",
+      "dates": "March 18 - March 25, 2025",
+      "startDate": "2025-03-18",
+      "endDate": "2025-03-25",
+      "location": "Nilgiris Field Station, Ooty",
+      "description": "Immersive field linguistic course mapping phonological frameworks of Nilgiris' tribal societies.",
+      "longDescription": "Part of the flagship W2M Academy core program, this residential session deploys selected fellows directly within Toda and Kota tribal villages. Over 7 days of structured fieldwork, fellows learn non-intrusive metadata registration, speech annotation in ELAN, and respectful community integration strategies under direct expert guidance.",
+      "image": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?auto=format&fit=crop&q=80&w=1200",
+      "status": "Archived",
+      "associatedCentres": [
+        "linguistic-cultural-diversity",
+        "digital-preservation"
+      ],
+      "associatedPeople": [
+        "karthick",
+        "bornini"
+      ],
+      "associatedProjects": [
+        "tholkudi"
+      ],
+      "schedule": [
+        {
+          "time": "Day 1, 10:00 AM",
+          "topic": "Field Ethics & Communal Consent Protocols"
+        },
+        {
+          "time": "Day 3, 02:00 PM",
+          "topic": "ELAN Annotation Pipelines & Granular Time Alignment"
+        },
+        {
+          "time": "Day 6, 09:30 AM",
+          "topic": "Archival Metadata Submission to Local Repositories",
+          "speaker": "Karthick Ramanathan"
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "overview",
+          "title": "Call for Participation",
+          "icon": "Atom",
+          "type": "markdown",
+          "content": {
+            "teaser": "W2M Academy announces its residency cohort fellowship, deploying trainees to catalog syntax variations in the Nilgiris highlands.",
+            "markdown": "### Residency Focus Areas\n- **Community Protocols**: Acquiring informed consent, community-owned licensing, and dialect boundary surveying.\n- **Phonological Field Annotation**: Multi-track recording of native speaker narratives using state-of-the-art acoustic captures.\n- **Metadata Register Splicing**: Splicing transcribed recordings into ELAN time-aligned templates for regional archive integration.\n\n### Selection Fellowship\nWe support 15 Fully-Funded fellowships covering travel, lodging, boarding, and regional village guide expenditures."
+          }
+        },
+        {
+          "slug": "dates",
+          "title": "Key Residency Gates",
+          "icon": "Calendar",
+          "type": "dates",
+          "content": [
+            {
+              "label": "Fellowship Nominations Open",
+              "date": "December 01, 2024"
+            },
+            {
+              "label": "Application Gateway Closes",
+              "date": "January 15, 2025"
+            },
+            {
+              "label": "Interviews & Final Invites Issued",
+              "date": "February 10, 2025"
+            },
+            {
+              "label": "Cohort Deploys on Site",
+              "date": "March 18, 2025",
+              "highlighted": true
+            }
+          ]
+        },
+        {
+          "slug": "residential-registration",
+          "title": "Registration Details",
+          "icon": "Inbox",
+          "type": "registration",
+          "content": {
+            "deadline": "February 15, 2025",
+            "buttonText": "Residency Concluded",
+            "buttonLink": "#",
+            "fees": [
+              {
+                "category": "Selected Academic Fellows",
+                "fee": "Fully Funded (INR 0)"
+              },
+              {
+                "category": "Sponsored External Delegates",
+                "fee": "INR 15,000"
+              }
+            ],
+            "instructions": [
+              "Fellowship funding is restricted to accepted candidates who possess a letter from CoDIN Academic Registrar.",
+              "All registrations include dormitory accommodation at Nilgiris Field Station, shared meals, and field travel."
+            ]
+          }
+        },
+        {
+          "slug": "accepted-fellows",
+          "title": "Fellows Cohort List",
+          "icon": "ShieldCheck",
+          "type": "list",
+          "content": [
+            {
+              "name": "Dr. Arundhati Roy Choudhury",
+              "role": "Fellow",
+              "affiliation": "Jawaharlal Nehru University"
+            },
+            {
+              "name": "Siddharth Karthikeyan",
+              "role": "Graduate Fellow",
+              "affiliation": "Bharathiar University"
+            },
+            {
+              "name": "Kundan Kumar Singh",
+              "role": "Research Assistant",
+              "affiliation": "IIT Kharagpur"
+            }
+          ]
+        },
+        {
+          "slug": "station-logistics",
+          "title": "Nilgiris Field Station Guide",
+          "icon": "Map",
+          "type": "logistics",
+          "content": {
+            "venue": "CoDIN Nilgiris Field Hub, Doddabetta Foothills, Ooty, Tamil Nadu",
+            "accommodation": "Fellows are housed in double-sharing rooms at Doddabetta Field Enclave. Linen, warm clothing, and umbrellas are mandatory.",
+            "travel": "Reach Ooty via Coimbatore International Airport (SBT) followed by a scenic 3-hour cab ride or local mountain railway. Pickups are scheduled for March 17 at airport.",
+            "visa": "Not applicable."
+          }
+        },
+        {
+          "slug": "organizers",
+          "title": "Residency Directors",
+          "icon": "Award",
+          "type": "committees",
+          "content": [
+            {
+              "name": "Academic Advisory Panel",
+              "members": [
+                {
+                  "name": "Dr. Bornini Lahiri",
+                  "role": "Senior Scholar & Evaluator",
+                  "affiliation": "CoDIN"
+                },
+                {
+                  "name": "Karthick Ramanathan",
+                  "role": "Archiving Co-chair",
+                  "affiliation": "CDP"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "slug": "residency-office",
+          "title": "Direct Connect",
+          "icon": "Mail",
+          "type": "contact",
+          "content": [
+            {
+              "name": "W2M Registrar Office",
+              "designation": "Ooty Enclave Admin",
+              "email": "ooty-residency@codin.org.in"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "slug": "kailash",
+      "id": "PROJ-001",
+      "title": "Project Kailash",
+      "tag": "Flagship AI Initiative",
+      "description": "Collecting large-scale training data across minoritised and tribal languages. Our mission is to reduce AI's bias by building fundamental benchmarking and training datasets for excluded cultures.",
+      "longDescription": "Project Kailash is CDI's ambitious response to the digital language divide. Currently, AI models suffer from profound data bias, often failing to recognize the nuances of minoritised or tribal languages. This project focuses on the large-scale acquisition of high-quality training and benchmarking datasets specifically for these excluded communities. By creating structural parity in the digital landscape, we ensure that the next generation of AI is inclusive from the ground up.",
+      "methodology": "We employ a hybrid approach combining field linguistics with automated quality-assurance pipelines. Our W2M certified annotators work directly with community native speakers to ensure cultural authenticity and linguistic precision.",
+      "impact": [
+        "Targeting 10+ minoritised languages in phase one.",
+        "Developing baseline transformers for low-resource varieties.",
+        "Reducing AI bias in speech-to-text accuracy by 40%."
+      ],
+      "aims": [
+        "Bias Mitigation",
+        "Training Datasets",
+        "Minoritised Focus"
+      ],
+      "color": "bg-brand-acid",
+      "status": "Ongoing",
+      "image": "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=1200",
+      "relatedLinks": [
+        {
+          "name": "Language Documentation Portal",
+          "url": "https://kailash-portal.diversity.org.in"
+        },
+        {
+          "name": "CDI AI Research Abstract",
+          "url": "https://research.diversity.org.in/kailash-bias-study"
+        }
+      ],
+      "associatedCentres": [
+        "diversity-ai-nlp"
+      ],
+      "projectDirectors": [
+        "bornini",
+        "ritesh"
+      ],
+      "projectStaffs": [
+        "Kavitadevi M. (Senior Annotator & Field Liaison)",
+        "Anand Kumar (Lead Machine Learning Engineer)",
+        "Siddharth S. (Linguistic Data Pipeline Administrator)"
+      ],
+      "fundingAgency": "CoDIN Foundation & Corporate Philanthropy",
+      "year": "2024",
+      "startDate": "2024-02-01",
+      "endDate": "2028-12-31",
+      "keywords": [
+        "AI",
+        "NLP",
+        "Minoritised",
+        "Tribal",
+        "Large Datasets",
+        "Speech"
+      ],
+      "subPages": [
+        {
+          "slug": "acoustic-stations",
+          "title": "Forest Ingestion Nodes",
+          "icon": "MapPin",
+          "type": "list",
+          "content": [
+            {
+              "name": "Station Toda Alpha",
+              "role": "Active Capturing",
+              "affiliation": "Ooty Highland forest zone"
+            },
+            {
+              "name": "Station Kota Beta",
+              "role": "Acoustic Calibrating",
+              "affiliation": "Kothagiri settlement cluster"
+            },
+            {
+              "name": "Station Badaga Gamma",
+              "role": "Setup Stage",
+              "affiliation": "Coonoor local library hub"
+            }
+          ]
+        },
+        {
+          "slug": "licensing-protocols",
+          "title": "Royalties & Copyright",
+          "icon": "ShieldCheck",
+          "type": "markdown",
+          "content": {
+            "teaser": "We operate a 'Sovereign Language Data' royalty framework.",
+            "markdown": "Every spoken contribution captured for Project Kailash is cryptographically mapped to the speaker's guild. Direct micro-royalties are governed through community co-ops to prevent algorithmic exploitation or uncompensated digital enclosure of indigenous oral resources. Commercial adapters must pay a local linguist equity premium."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "tholkudi",
+      "id": "PROJ-TN-01",
+      "title": "Tholkudi",
+      "tag": "Government Funded",
+      "description": "A government-supported language and cultural documentation initiative focused on preserving the linguistic, oral, ecological, and cultural heritage of Tamil Nadu’s Scheduled Tribe communities through digital archiving, field documentation, and public access systems. The project contributes to safeguarding intangible cultural heritage through community-centered archival and documentation practices.",
+      "longDescription": "Tholkudi is a large-scale language and cultural documentation initiative supported by the Government of Tamil Nadu and developed to document, preserve, and improve long-term access to the linguistic and cultural heritage of Scheduled Tribe communities across Tamil Nadu.\n\nThe project brings together language documentation, oral traditions, folklore, ecological knowledge, songs, narratives, ritual practices, material culture, and community histories into a structured digital archival environment intended for long-term preservation and public accessibility.<br><br>Karthick Narayanan served as consultant for language documentation and played a major role in shaping the archive’s documentation architecture, metadata approach, multilingual archival structure, and broader conceptual direction. His work contributed substantially to the development of the archive’s documentation workflows and approaches to representing linguistic and cultural knowledge within a digital archival system.\n\nIn continuation of this work, the Council for Diversity and Innovation (CoDIN) was later entrusted with implementing a user-centered redesign and accessibility-oriented archival interface for the repository. This phase focused on improving discoverability, metadata navigation, browsing systems, multilingual accessibility, mobile responsiveness, and overall public usability of archival collections.<br><br>The redesign process emphasized practical archival usability for researchers, students, educators, government stakeholders, and community members while maintaining compatibility with long-term digital preservation standards.<br><br>The project combines field documentation, digital humanities approaches, metadata-driven archival systems, and participatory methods of cultural preservation. Particular emphasis is placed on ensuring that archival representation remains context-sensitive, community-informed, and publicly accessible.<br><br>Rather than functioning solely as a storage repository, Tholkudi is envisioned as a living cultural knowledge platform supporting research, education, cultural continuity, public engagement, and future heritage preservation initiatives related to Tamil Nadu’s indigenous and tribal communities.",
+      "methodology": "The project follows a field-based and archival-centered documentation methodology combining ethnographic fieldwork, oral history collection, audiovisual recording, metadata creation, transcription, cataloguing, and digital preservation workflows.<br><br>Documentation activities include recording oral traditions, linguistic practices, folklore, ecological knowledge, songs, narratives, and cultural practices from communities across Tamil Nadu. The archival infrastructure integrates multilingual metadata systems, structured browsing frameworks, and user-centered design principles to improve accessibility and discoverability.<br><br>The later redesign and implementation phase carried out by the Council for Diversity and Innovation focused on improving archival usability through multilingual interfaces, mobile-responsive design, metadata-driven discovery systems, structured browsing environments, and public-facing archival navigation tools.",
+      "impact": [
+        "Documentation and preservation of linguistic and cultural heritage associated with Scheduled Tribe communities in Tamil Nadu.",
+        "Creation of a publicly accessible digital archive for language and cultural materials.",
+        "Development of multilingual and metadata-rich archival systems for cultural preservation.",
+        "Improved usability and discoverability of archival collections through user-centered interface redesign.",
+        "Strengthening long-term digital preservation infrastructure for cultural heritage materials.",
+        "Contribution to safeguarding intangible cultural heritage through digital documentation and archival accessibility."
+      ],
+      "aims": [
+        "Language Documentation",
+        "Digital Archiving",
+        "Cultural Preservation",
+        "Community-Centered Documentation",
+        "Metadata and Knowledge Systems",
+        "User-Centered Archive Design",
+        "Public Access to Cultural Heritage",
+        "Safeguarding Intangible Cultural Heritage"
+      ],
+      "color": "bg-brand-blue",
+      "status": "Ongoing",
+      "image": "https://images.unsplash.com/photo-1577083552431-6e5fd01988ec?auto=format&fit=crop&q=80&w=1200",
+      "relatedLinks": [
+        {
+          "name": "Govt of Tamil Nadu Cultural Dept",
+          "url": "https://www.tn.gov.in/department/3"
+        },
+        {
+          "name": "Tamil Digital Library Partner",
+          "url": "https://www.tamildigitallibrary.in"
+        }
+      ],
+      "associatedCentres": [
+        "digital-preservation"
+      ],
+      "projectDirectors": [
+        "karthick"
+      ],
+      "projectStaffs": [
+        "Sangeetha P. (Senior Ethno-Linguistic Field Researcher)",
+        "Muthuvelan K. (Lead GIS Cartographer & Artifact Digitizer)",
+        "Abhishek R. (Digital Archival Specialist & Metadata Curator)"
+      ],
+      "fundingAgency": "Adi Dravidar and Tribal Welfare Department, Government of Tamil Nadu",
+      "year": "2021",
+      "startDate": "2021-01-01",
+      "endDate": "2025-01-01",
+      "keywords": [
+        "Digital Archiving",
+        "Indigenous",
+        "Culture",
+        "Tamil Nadu",
+        "Heritage"
+      ],
+      "subPages": [
+        {
+          "slug": "methodology",
+          "title": "Methodology",
+          "icon": "BookOpen",
+          "type": "list",
+          "content": [
+            {
+              "name": "Irula Customary Marriage Songs",
+              "role": "14 Recordings Archived",
+              "affiliation": "Anaikatti Cluster"
+            },
+            {
+              "name": "Kurumba Honey Harvest Narratives",
+              "role": "08 Narratives (Transcribed)",
+              "affiliation": "Attappadi Slopes"
+            },
+            {
+              "name": "Kota Metallic Tool Work Vocabularies",
+              "role": "Compiling Lexicon",
+              "affiliation": "Trichigadi Settlement"
+            }
+          ]
+        },
+        {
+          "slug": "collaborators",
+          "title": "Collaborators",
+          "icon": "BookOpen",
+          "type": "list",
+          "content": [
+            {
+              "name": "Tribal Research Centre",
+              "role": "Institutional Collaborator",
+              "affiliation": ""
+            },
+            {
+              "name": "Madras School of Social Work",
+              "role": "Institutional Collaborator",
+              "affiliation": ""
+            },
+            {
+              "name": "Centre for Social Justice and Equity",
+              "role": "Institutional Collaborator",
+              "affiliation": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "suvadugal",
+      "id": "PROJ-TN-02",
+      "title": "Suvadugal",
+      "tag": "Government Funded",
+      "description": "Supported by the Govt of Tamil Nadu. Documentation and archiving of cultural heritage, using advanced digital tools to map history to the future.",
+      "longDescription": "Suvadugal focuses on the 'tracks' left by history. This project, funded by the Government of Tamil Nadu, specializes in the archival documentation of cultural heritage sites and artifacts. Using high-resolution scanning and localized research, we are building a robust digital repository that maps historical data to the future needs of historians, urban planners, and the public.",
+      "methodology": "Utilizing photogrammetry and high-fidelity audio-visual recording to capture heritage sites in their current state, combined with historical context provided by community elders.",
+      "impact": [
+        "Preserved metadata for 500+ heritage artifacts.",
+        "Interactive digital mapping of historical sites.",
+        "Public-facing education modules integrated into state schools."
+      ],
+      "aims": [
+        "Heritage Mapping",
+        "Digital Preservation",
+        "Cultural Data"
+      ],
+      "color": "bg-brand-orange",
+      "status": "Upcoming",
+      "image": "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&q=80&w=1200",
+      "relatedLinks": [
+        {
+          "name": "Artifact Metadata Catalog",
+          "url": "https://archives.diversity.org.in/suvadugal"
+        }
+      ],
+      "associatedCentres": [
+        "linguistic-cultural-diversity",
+        "digital-preservation"
+      ],
+      "projectDirectors": [
+        "karthick"
+      ],
+      "projectStaffs": [
+        "Nithya S. (Senior Content & Metadata Architect)",
+        "Ramakrishnan G. (Oral Tradition Recording Coordinator)",
+        "Deepa V. (Archival Photogrammetry Associate)"
+      ],
+      "fundingAgency": "Department of Culture, Government of Tamil Nadu",
+      "year": "2026",
+      "startDate": "2026-08-01",
+      "endDate": "2030-01-01",
+      "keywords": [
+        "Artifacts",
+        "Photogrammetry",
+        "Mapping",
+        "Metadata",
+        "Tamil Nadu"
+      ],
+      "subPages": [
+        {
+          "slug": "scanning-protocols",
+          "title": "Photogrammetry Specs",
+          "icon": "Code",
+          "type": "markdown",
+          "content": {
+            "teaser": "Standard operating specs for 3D digital archival twin generation.",
+            "markdown": "Suvadugal field missions utilize 120-megapixel stereo cameras pairing cross-polarized rings to eliminate specular soil shine on ancient palm leaves. Mesh decimation is locked at 2M polygons raw with 8K texture wraps mapped to international Dublin Core metadata schemas."
+          }
+        }
+      ]
+    }
+  ],
+  "centres": [
+    {
+      "slug": "diversity-ai-nlp",
+      "name": "Centre for Diversity in AI and NLP",
+      "shortName": "CD-AINLP",
+      "tagline": "Building high-performance language technologies that understand every voice and dialect.",
+      "description": "The Centre for Diversity in AI and NLP is dedicated to mitigating algorithmic bias in modern speech and language systems. We conduct cutting-edge research to develop speech recognition, translation, and understanding models that work reliably for South Asia's minoritised dialects and low-resource tribal languages.",
+      "image": "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&q=80&w=1200",
+      "aims": [
+        "Reduce phoneme-level error rates in automated speech systems for non-standard varieties.",
+        "Launch specialized benchmarking suites testing systems under extreme dialectal variance.",
+        "Design open-access neural language resources preserving syntactic diversity."
+      ],
+      "projects": [
+        "kailash"
+      ],
+      "people": [
+        "bornini",
+        "ritesh"
+      ],
+      "courses": [
+        "ai-bias-mitigation",
+        "ethic-ai-governance"
+      ],
+      "publications": [
+        {
+          "title": "Adapting Speech Foundations for Highly Low-Resource Tribal Dialects",
+          "authors": "Dr. Bornini Lahiri, Ritesh Kumar",
+          "journal": "CoDIN Computational Speech Review",
+          "year": "2025"
+        },
+        {
+          "title": "Quantifying Social and Dialectal Bias in Commercial Automatic Speech Recognition",
+          "authors": "Ritesh Kumar, Dr. Bornini Lahiri",
+          "journal": "Journal of Language Equity and AI Foundations",
+          "year": "2024"
+        }
+      ],
+      "relevantCards": [
+        {
+          "title": "Dynamic Evaluation Rig",
+          "description": "A specialized local hardware system simulating field dialects with noise environments to stress-test API endpoints."
+        },
+        {
+          "title": "Ethical Incentive Frameworks",
+          "description": "Co-operatively designed compensation blueprints for verbal asset contributors, ensuring standard royalties."
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "benchmarking-standards",
+          "title": "CD-AINLP Baselines",
+          "icon": "Code",
+          "type": "markdown",
+          "content": {
+            "teaser": "Standardized evaluation rules for inclusive acoustic systems.",
+            "markdown": "Our lab operates the first dedicated diversity benchmark dataset evaluating dialectal phonetic drift. We publish standard test sets for five under-represented dialect profiles under CC-BY-NC license to challenge global tech benchmarks."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "digital-preservation",
+      "name": "Centre for Digital Preservation of Linguistic and Cultural Heritage",
+      "shortName": "CDP-LCH",
+      "tagline": "Safeguarding delicate oral histories and physical records through digital vaults.",
+      "description": "Our Digital Preservation Centre addresses the urgent threat behind the loss of indigenous records and oral traditions. We deploy localized high-granularity media systems, field-recording standard kits, and custom metadata catalog systems to build durable cultural archives.",
+      "image": "https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&q=80&w=1200",
+      "aims": [
+        "Digitize precious manuscripts, palm-leaf archives, and community heirlooms.",
+        "Produce interactive sound vaults detailing tribal narratives and oral histories.",
+        "Empower localized communities with low-cost archiving devices and workflows."
+      ],
+      "projects": [
+        "tholkudi",
+        "suvadugal"
+      ],
+      "people": [
+        "karthick",
+        "bornini"
+      ],
+      "courses": [
+        "data-annotation-mastery",
+        "field-methods-oct-2024"
+      ],
+      "publications": [
+        {
+          "title": "Metadata Standards for Oral Traditions: The Tholkudi Archival Framework",
+          "authors": "Karthick Ramanathan, Dr. Bornini Lahiri",
+          "journal": "International Journal of Archival Science and Digital Humanities",
+          "year": "2025"
+        },
+        {
+          "title": "Ethical Lifespans of Community-Sourced Cultural Artifact Metadata",
+          "authors": "Karthick Ramanathan",
+          "journal": "Cultural Informatics Review",
+          "year": "2024"
+        }
+      ],
+      "relevantCards": [
+        {
+          "title": "Media Ingestion Hubs",
+          "description": "Equipped with localized multi-spectral scanners to recover faded manuscript pages on-site."
+        },
+        {
+          "title": "Sound Vault Storage",
+          "description": "Redundant offline storage networks managed directly in community clusters to maintain intellectual property."
+        }
+      ],
+      "subPages": [
+        {
+          "slug": "manuscript-salvaging",
+          "title": "Field Salvage Kit",
+          "icon": "ShieldCheck",
+          "type": "markdown",
+          "content": {
+            "teaser": "Standard field deployment equipment for wet/dry climate regions.",
+            "markdown": "LCH teams carry portable vacuum sealers, moisture absorbent cartridges, and low-wattage ultra-violet preservation chambers. In emergencies (floods, building collapses), we establish quick restoration tents in coordinate points."
+          }
+        }
+      ]
+    },
+    {
+      "slug": "linguistic-cultural-diversity",
+      "name": "Centre for Linguistic and Cultural Diversity",
+      "shortName": "CL-CD",
+      "tagline": "Uncovering deep grammatical patterns and folk traditions through field research.",
+      "description": "The Centre for Linguistic and Cultural Diversity conducts baseline documentation surveys mapping standard typological traits, grammatical patterns, folk songs, and culinary traditions across regional communities. We study how cultural environments directly shape linguistic structures.",
+      "image": "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=1200",
+      "aims": [
+        "Carry out comprehensive linguistic map-making of under-documented South Asian regions.",
+        "Publish intensive dictionaries and reference grammars detailing endangered idioms.",
+        "Document the ethno-linguistic context behind oral folk narratives."
+      ],
+      "projects": [
+        "suvadugal"
+      ],
+      "people": [
+        "karthick"
+      ],
+      "courses": [
+        "field-linguistics-101",
+        "field-methods-june-2024"
+      ],
+      "publications": [
+        {
+          "title": "Phonological Mapping of Scheduled Tribes in Western Ghats",
+          "authors": "Dr. Bornini Lahiri",
+          "journal": "Linguistic Documentation and Conservation Quarterly",
+          "year": "2025"
+        },
+        {
+          "title": "Syntactic Parallels across South Indian Folk Songs",
+          "authors": "Karthick Ramanathan, Dr. Bornini Lahiri",
+          "journal": "Ethnomusicology and Linguistics Archive",
+          "year": "2024"
+        }
+      ],
+      "relevantCards": [
+        {
+          "title": "Grammar Catalog Workspace",
+          "description": "Interactive tools analyzing structural alignment and verb conjugation structures in low-resource syntax."
+        },
+        {
+          "title": "Folk Lyric Repository",
+          "description": "A continuous historical compilation matching transcripts to verified performance melodies."
+        }
+      ]
+    }
+  ],
+  "people": [
+    {
+      "slug": "karthick",
+      "name": "R Karthick Narayanan",
+      "fullName": "R Karthick Narayanan",
+      "role": "Co-founder and Director",
+      "email": "karthick@diversity.org.in",
+      "image": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&q=80&w=400",
+      "bio": "Karthick is an archival scientist and specialist in historical media recovery. He designs digital replication protocols, high-fidelity metadata frameworks, and photogrammetric pipelines for our heritage preservation programs. Over the past decade, he has collaborated with archaeological trusts and State archives to design robust, community-accessible digital vaults.",
+      "education": [
+        {
+          "degree": "M.Sc. in Archaeological Science",
+          "institution": "Madras University",
+          "year": "2015"
+        },
+        {
+          "degree": "B.Sc. in History & Material Conservation",
+          "institution": "Loyola College, Chennai",
+          "year": "2013"
+        }
+      ],
+      "experience": [
+        {
+          "role": "Lead Archival Scientist",
+          "organization": "Council for Diversity and Innovation",
+          "period": "2022 - Present",
+          "description": "Managing photogrammetry capture campaigns, heritage data schemas alignment, and high-fidelity physical manuscript stabilization methods."
+        },
+        {
+          "role": "Digital Preservation Consult",
+          "organization": "Historic Restorations Archive",
+          "period": "2016 - 2022",
+          "description": "Consulted on historical media restoration, digitization of high-acid paper prints, and structural metadata compilation."
+        }
+      ],
+      "publications": [
+        "Metadata Standards for Oral Traditions: The Tholkudi Archival Framework (2025)",
+        "Ethical Lifespans of Community-Sourced Cultural Artifact Metadata (2024)"
+      ],
+      "researchInterests": [
+        "Archival Science",
+        "Heritage Preservation",
+        "Photogrammetry",
+        "Metadata Standards"
+      ],
+      "centres": [
+        "digital-preservation",
+        "linguistic-cultural-diversity"
+      ],
+      "socials": {
+        "linkedin": "https://linkedin.com/in/karthick-ramanathan-mock",
+        "website": "https://karthick.diversity.org.in"
+      },
+      "otherSections": [
+        {
+          "title": "Archival Field Gear & Setup",
+          "content": [
+            "Calibrated multispectral imagers, photogrammetric turntables, and phase-one backing sensors.",
+            "Experienced in handling delicate ancient palm-leaf manuscripts and non-rigid historical fibers."
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "bornini",
+      "name": "Dr. Bornini Lahiri",
+      "fullName": "Dr. Bornini Lahiri",
+      "role": "Co-founder and Lead - Centre for Linguistic and Cultural Diversity",
+      "email": "bornini@diversity.org.in",
+      "image": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400",
+      "bio": "Dr. Lahiri is a prominent field linguist specialized in South Asian minority languages and phonetic transcriptions. She leads the linguistic fieldwork protocols at CoDIN, bridging organic vernacular documentation with robust machine learning pipelines. Formerly a research fellow with government-funded archiving projects, her work ensures community-first ethical standards in data collection.",
+      "education": [
+        {
+          "degree": "Ph.D. in Linguistics",
+          "institution": "Jawaharlal Nehru University",
+          "year": "2018"
+        },
+        {
+          "degree": "M.A. in Linguistics",
+          "institution": "University of Calcutta",
+          "year": "2013"
+        }
+      ],
+      "experience": [
+        {
+          "role": "Linguistic Research Lead",
+          "organization": "Council for Diversity and Innovation (CoDIN)",
+          "period": "2021 - Present",
+          "description": "Spearheading field data-collection paradigms, transcription efforts, and linguistic alignment with speech and machine learning frameworks."
+        },
+        {
+          "role": "Postdoctoral Research Fellow",
+          "organization": "State Linguistics Institute",
+          "period": "2019 - 2021",
+          "description": "Investigated low-resource Dravidian languages and acoustic phonetic transcriptions."
+        }
+      ],
+      "publications": [
+        "Adapting Speech Foundations for Highly Low-Resource Tribal Dialects (2025)",
+        "Metadata Standards for Oral Traditions: The Tholkudi Archival Framework (2025)",
+        "Phonological Mapping of Scheduled Tribes in Western Ghats (2025)"
+      ],
+      "researchInterests": [
+        "Acoustic Phonetics",
+        "Field Linguistics",
+        "Low-resource Languages",
+        "Dravidian Studies"
+      ],
+      "centres": [
+        "diversity-ai-nlp",
+        "digital-preservation"
+      ],
+      "socials": {
+        "linkedin": "https://linkedin.com/in/borninilahiri-mock",
+        "website": "https://bornini-lahiri.diversity.org.in"
+      },
+      "otherSections": [
+        {
+          "title": "Research Fellowships & Grants",
+          "content": [
+            "Recipient of the National Archival Grant for South Indian Dialects (2023)",
+            "JNU Distinguished Young Scholar Fellowship (2016)"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "ritesh",
+      "name": "Ritesh Kumar",
+      "fullName": "Ritesh Kumar",
+      "role": "Co-founder and Lead - Centre for Diversity in AI and NLP",
+      "email": "riteshkr.kmi@gmail.com",
+      "image": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=400",
+      "bio": "Ritesh Kumar leads the technological exploration and system designs for diversity pipelines. With deep expertise in natural language processing (NLP), cloud-scale speech interfaces, and ethical model benchmarking, he designs the systems that power Project Kailash. Dedicated to breaking down resource disparity in algorithmic platforms, he works at the interface of software engineering and deep learning models.",
+      "education": [
+        {
+          "degree": "M.S. in Computer Science (NLP & AI)",
+          "institution": "Indian Institute of Technology",
+          "year": "2019"
+        },
+        {
+          "degree": "B.Tech in Computer Science and Engineering",
+          "institution": "National Institute of Technology",
+          "year": "2017"
+        }
+      ],
+      "experience": [
+        {
+          "role": "Lead Technology Strategist & Systems Architect",
+          "organization": "Council for Diversity and Innovation",
+          "period": "2021 - Present",
+          "description": "Designing end-to-end cloud processing clusters, custom acoustic datasets loaders, and multi-lingual inference frameworks for tribal dialects."
+        },
+        {
+          "role": "AI & Speech Engineer",
+          "organization": "Computational Linguistics Lab",
+          "period": "2019 - 2021",
+          "description": "Built scalable models for machine translation and low-density automatic speech recognition (ASR)."
+        }
+      ],
+      "publications": [
+        "Quantifying Social and Dialectal Bias in Commercial Automatic Speech Recognition (2024)",
+        "Adapting Speech Foundations for Highly Low-Resource Tribal Dialects (2025)"
+      ],
+      "researchInterests": [
+        "Natural Language Processing",
+        "Automatic Speech Recognition",
+        "Model Bias",
+        "AI Ethics"
+      ],
+      "centres": [
+        "diversity-ai-nlp"
+      ],
+      "socials": {
+        "linkedin": "https://linkedin.com/in/ritesh-kumar-mock",
+        "website": "https://ritesh.diversity.org.in"
+      },
+      "otherSections": [
+        {
+          "title": "Core Framework Competencies",
+          "content": [
+            "Architecting deep learning speech modeling pipelines utilizing PyTorch, ESPnet, and Hugging Face Ecosystems.",
+            "Engineering high-efficiency mobile datasets recorders and secure client-side alignment tooling with offline caching."
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "meiraba",
+      "name": "Meiraba Takhellambam",
+      "fullName": "Meiraba Takhellambam",
+      "role": "Co-founder and Fellow",
+      "email": "meiraba@diversity.org.in",
+      "image": "",
+      "bio": "",
+      "education": [],
+      "experience": [],
+      "publications": [],
+      "researchInterests": [
+        "Linguistic Preservation",
+        "Ethnocultural Studies",
+        "Digital Humanities"
+      ],
+      "centres": [],
+      "socials": {},
+      "otherSections": []
+    }
+  ]
+}

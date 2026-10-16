@@ -23,6 +23,7 @@ import { useAuth } from "../context/AuthContext";
 import { MarkdownMediaHelper } from "../components/MarkdownMediaHelper";
 import { read, utils } from "xlsx";
 import EventFormModal from "../components/EventFormModal";
+import { getResolvedEventFee, extractRegistrationFees } from "../lib/eventFees";
 import {
   ArrowLeft,
   Calendar,
@@ -277,6 +278,13 @@ export default function EventDetail() {
 
   // Edit Event Modal Form states
   const [showEditModal, setShowEditModal] = useState(false);
+
+  // Support Office // RSVP inline editing states
+  const [editingSupportOffice, setEditingSupportOffice] = useState(false);
+  const [supportTextDraft, setSupportTextDraft] = useState("");
+  const [supportEmailDraft, setSupportEmailDraft] = useState("");
+  const [savingSupportOffice, setSavingSupportOffice] = useState(false);
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -445,6 +453,47 @@ export default function EventDetail() {
 
   const handleEditEventClick = () => {
     setShowEditModal(true);
+  };
+
+  const handleStartEditSupport = () => {
+    setSupportTextDraft(
+      event?.supportOfficeText ||
+        "Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?",
+    );
+    setSupportEmailDraft(
+      event?.supportOfficeEmail || "academy@diversity.org.in",
+    );
+    setEditingSupportOffice(true);
+  };
+
+  const handleSaveSupportOffice = async () => {
+    if (!token || !event) return;
+    try {
+      setSavingSupportOffice(true);
+      const res = await fetch(getEventApiUrl(event._id || event.slug), {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          supportOfficeText: supportTextDraft.trim(),
+          supportOfficeEmail: supportEmailDraft.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.event) {
+        setEvent(data.event);
+        setEditingSupportOffice(false);
+      } else {
+        alert(data.error || "Failed to update Support Office / RSVP configuration");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Error updating Support Office: " + String(err));
+    } finally {
+      setSavingSupportOffice(false);
+    }
   };
 
   const handleMoveCustomPage = (idx: number, direction: "up" | "down") => {
@@ -1678,9 +1727,10 @@ export default function EventDetail() {
                   {activeTab.type === "markdown" && (
                     <div className="space-y-6">
                       {activeTab.content.teaser && (
-                        <p className="font-serif text-2xl italic leading-relaxed text-ink/80 border-l-4 border-brand-orange pl-6 mb-8 uppercase tracking-tight">
-                          {activeTab.content.teaser}
-                        </p>
+                        <div 
+                          className="font-serif text-2xl italic leading-relaxed text-ink/80 border-l-4 border-brand-orange pl-6 mb-8 uppercase tracking-tight"
+                          dangerouslySetInnerHTML={{ __html: renderMarkdown(activeTab.content.teaser) }}
+                        />
                       )}
                       <div
                         className="prose max-w-none text-ink text-sm leading-relaxed bg-paper/50 p-6 border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)]"
@@ -1715,9 +1765,10 @@ export default function EventDetail() {
                                 {dt.date}
                               </span>
                               {dt.footnote && (
-                                <span className="font-mono text-[9px] text-ink/50 uppercase mt-1.5 font-black tracking-widest font-bold">
-                                  {dt.footnote}
-                                </span>
+                                <span 
+                                  className="font-mono text-[9px] text-ink/50 uppercase mt-1.5 font-black tracking-widest font-bold"
+                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(dt.footnote) }}
+                                />
                               )}
                             </div>
                           </div>
@@ -2007,9 +2058,10 @@ export default function EventDetail() {
                                           </span>
                                         )}
                                         {item.details && (
-                                          <div className="text-xs text-ink/70 mt-2 font-sans prose prose-sm leading-normal whitespace-pre-wrap">
-                                            {item.details}
-                                          </div>
+                                          <div 
+                                            className="text-xs text-ink/70 mt-2 font-sans prose prose-sm leading-normal"
+                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(item.details) }}
+                                          />
                                         )}
                                       </div>
                                     </div>
@@ -2054,8 +2106,20 @@ export default function EventDetail() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-ink">
-                            {(activeTab.content.fees || []).map(
-                              (fee: any, idx: number) => (
+                            {(() => {
+                              const tabFees = (activeTab.content && Array.isArray(activeTab.content.fees) && activeTab.content.fees.length > 0)
+                                ? activeTab.content.fees
+                                : extractRegistrationFees(event);
+                              if (!tabFees || tabFees.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={2} className="p-4 text-center text-ink/50 italic font-mono text-[11px]">
+                                      Standard registration policies apply. Please consult the instructions below or RSVP desk.
+                                    </td>
+                                  </tr>
+                                );
+                              }
+                              return tabFees.map((fee: any, idx: number) => (
                                 <tr key={idx} className="hover:bg-paper/50">
                                   <td className="p-4 border-r border-ink font-bold">
                                     {fee.category}
@@ -2064,8 +2128,8 @@ export default function EventDetail() {
                                     {fee.fee}
                                   </td>
                                 </tr>
-                              ),
-                            )}
+                              ));
+                            })()}
                           </tbody>
                         </table>
                       </div>
@@ -2078,9 +2142,11 @@ export default function EventDetail() {
                           <ul className="list-disc pl-5 font-mono text-xs text-ink/75 space-y-2.5 uppercase tracking-wide leading-relaxed">
                             {activeTab.content.instructions.map(
                               (ins: any, idx: number) => (
-                                <li key={idx} className="font-semibold">
-                                  {ins}
-                                </li>
+                                <li 
+                                  key={idx} 
+                                  className="font-semibold"
+                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }}
+                                />
                               ),
                             )}
                           </ul>
@@ -3261,16 +3327,50 @@ export default function EventDetail() {
                     </p>
 
                     {/* Fee Area */}
-                    <div className="text-3xl font-serif font-black italic mb-6 text-white leading-none">
-                      {isCompletedCourse ? (
-                        (event.completedFee !== undefined && event.completedFee > 0) ? (
-                          <span className="font-sans font-bold">₹{event.completedFee}</span>
-                        ) : "Free"
-                      ) : (
-                        (event.fee !== undefined && event.fee > 0) ? (
-                          <span className="font-sans font-bold">₹{event.fee}</span>
-                        ) : "Free"
-                      )}
+                    <div className="mb-6">
+                      <div className="text-3xl font-serif font-black italic text-white leading-none">
+                        {isCompletedCourse ? (
+                          (event.completedFee !== undefined && event.completedFee > 0) ? (
+                            <span className="font-sans font-bold text-brand-acid">₹{event.completedFee.toLocaleString()}</span>
+                          ) : "Free"
+                        ) : (
+                          (() => {
+                            const resolvedFee = getResolvedEventFee(event, false);
+                            if (resolvedFee.isFree) {
+                              return <span className="font-sans font-bold text-brand-acid">Free</span>;
+                            }
+                            return <span className="font-sans font-bold text-brand-acid">{resolvedFee.display}</span>;
+                          })()
+                        )}
+                      </div>
+                      {!isCompletedCourse && (() => {
+                        const resolvedFee = getResolvedEventFee(event, false);
+                        if (resolvedFee.isTiered) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const regTab = tabsList.find((t) => t.type === "registration");
+                                if (regTab) {
+                                  setActiveTabSlug(regTab.slug);
+                                }
+                                const el =
+                                  document.getElementById("tabs-navigation") ||
+                                  document.querySelector(".tabs-navbar-parent");
+                                if (el) {
+                                  el.scrollIntoView({ behavior: "smooth" });
+                                } else {
+                                  window.scrollTo({ top: 400, behavior: "smooth" });
+                                }
+                              }}
+                              className="mt-2 text-[10px] font-mono uppercase tracking-wider text-white/70 hover:text-brand-acid flex items-center gap-1 cursor-pointer underline text-left"
+                            >
+                              View all {resolvedFee.tiersCount} category pricing schedules &rarr;
+                            </button>
+                          );
+                        }
+                        return null;
+                      })()}
                     </div>
                   </div>
 
@@ -3382,21 +3482,81 @@ export default function EventDetail() {
                 </div>
               )}
 
-              {/* Syllabus inquiry help */}
-              <div className="border border-ink p-10 bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] text-left font-bold font-mono">
-                <div className="text-[9px] font-black uppercase tracking-[0.3em] text-ink/30 mb-6">
-                  SUPPORT OFFICE // RSVP
+              {/* Support Office // RSVP Help & Configuration */}
+              <div className="border border-ink p-8 sm:p-10 bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] text-left font-bold font-mono">
+                <div className="flex items-center justify-between gap-2 mb-4">
+                  <div className="text-[9px] font-black uppercase tracking-[0.3em] text-ink/30">
+                    SUPPORT OFFICE // RSVP
+                  </div>
+                  {isOrganizer && !editingSupportOffice && (
+                    <button
+                      type="button"
+                      onClick={handleStartEditSupport}
+                      className="text-[9px] font-mono font-bold uppercase text-brand-blue hover:underline cursor-pointer border border-brand-blue/30 px-2 py-0.5 bg-brand-blue/5 hover:bg-brand-blue/15 transition-colors"
+                    >
+                      Edit RSVP
+                    </button>
+                  )}
                 </div>
-                <p className="text-xs text-ink/80 leading-relaxed mb-6">
-                  Need logistical assistance, boarding passes, fee waivers, or
-                  travel sponsorships?
-                </p>
-                <a
-                  href="mailto:academy@diversity.org.in"
-                  className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-blue hover:underline whitespace-nowrap"
-                >
-                  <Mail className="w-4.5 h-4.5" /> INQUIRE RESPECTING COMPLIANCE
-                </a>
+
+                {editingSupportOffice ? (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-[8px] font-black uppercase tracking-wider text-ink/50 mb-1 font-mono">
+                        Inquiry / Assistance Text Prompt
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={supportTextDraft}
+                        onChange={(e) => setSupportTextDraft(e.target.value)}
+                        placeholder="e.g. Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?"
+                        className="w-full p-2.5 border border-ink bg-paper font-sans text-xs focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[8px] font-black uppercase tracking-wider text-ink/50 mb-1 font-mono">
+                        RSVP / Support Email Address
+                      </label>
+                      <input
+                        type="email"
+                        value={supportEmailDraft}
+                        onChange={(e) => setSupportEmailDraft(e.target.value)}
+                        placeholder="e.g. academy@diversity.org.in"
+                        className="w-full p-2 border border-ink bg-paper font-mono text-xs focus:bg-white focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSaveSupportOffice}
+                        disabled={savingSupportOffice}
+                        className="px-3.5 py-1.5 bg-brand-orange text-white text-[10px] uppercase font-bold border border-ink cursor-pointer hover:bg-black transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] active:shadow-none"
+                      >
+                        {savingSupportOffice ? "Saving..." : "Save RSVP"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSupportOffice(false)}
+                        className="px-3 py-1.5 bg-paper text-ink text-[10px] uppercase font-bold border border-ink cursor-pointer hover:bg-white transition-all"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-xs text-ink/80 leading-relaxed mb-6 font-sans">
+                      {event.supportOfficeText ||
+                        "Need logistical assistance, boarding passes, fee waivers, or travel sponsorships?"}
+                    </p>
+                    <a
+                      href={`mailto:${event.supportOfficeEmail || "academy@diversity.org.in"}`}
+                      className="inline-flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand-blue hover:underline whitespace-nowrap"
+                    >
+                      <Mail className="w-4.5 h-4.5" /> INQUIRE RESPECTING COMPLIANCE
+                    </a>
+                  </>
+                )}
               </div>
             </div>
           </div>

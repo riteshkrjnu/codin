@@ -20,33 +20,11 @@ export default function Hero() {
   useEffect(() => {
     async function fetchShowcase() {
       try {
-        const [annRes, eventsRes, coursesRes] = await Promise.all([
-          fetch('/api/announcements'),
-          fetch('/api/events'),
-          fetch('/api/courses')
-        ]);
-        
-        const annText = await annRes.text();
-        const eventsText = await eventsRes.text();
-        const coursesText = await coursesRes.text();
-
-        let annData: any = {};
-        let eventsData: any = {};
-        let coursesData: any = {};
-
-        if (annText.trim().startsWith('{')) {
-          try { annData = JSON.parse(annText); } catch (e) { console.error("Failed to parse announcements JSON", e); }
-        }
-        if (eventsText.trim().startsWith('{')) {
-          try { eventsData = JSON.parse(eventsText); } catch (e) { console.error("Failed to parse events JSON", e); }
-        }
-        if (coursesText.trim().startsWith('{')) {
-          try { coursesData = JSON.parse(coursesText); } catch (e) { console.error("Failed to parse courses JSON", e); }
-        }
-
-        if (annData.announcements) setDbAnnouncements(annData.announcements);
-        if (eventsData.events) setDbEvents(eventsData.events);
-        if (coursesData.courses) setDbCourses(coursesData.courses);
+        const response = await fetch('/api/activity-feed');
+        if (!response.ok) throw new Error('Activity feed unavailable');
+        const { items } = await response.json();
+        setDbAnnouncements(items.filter((x: any) => ['Upcoming','Ongoing'].includes(x.status) || (!x.isDynamic && x.status !== 'Completed')));
+        setDbEvents([]); setDbCourses([]);
       } catch (err) {
         console.error("Error loading Hero showcase feeds:", err);
       } finally {

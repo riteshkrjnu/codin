@@ -1,3 +1,11 @@
+import ConnectedWriting from '../features/writing/ConnectedWriting';
+import { CentreChapter, ConnectedRecords } from '../site/layout/DossierContent';
+import RecordImage from '../site/layout/RecordImage';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance from '../site/layout/RecordGlance';
+import { useSiteData } from '../site/data';
+import RecordHeading from '../site/layout/RecordHeading';
+import ActivityUpdates from '../components/ActivityUpdates';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -31,7 +39,8 @@ function getIcon(name: string) {
 }
 
 export default function CentreDetail() {
-  const peopleList = useLatestPeople();
+  const {data:siteData}=useSiteData();
+  const peopleList = siteData.people;
   const { slug } = useParams();
   const { user } = useAuth();
   
@@ -138,9 +147,9 @@ export default function CentreDetail() {
   }
 
   // Get associated entities
-  const associatedProjects = staticProjects.filter(p => centre.projects?.includes(p.slug) || p.associatedCentres?.includes(centre.slug));
+  const associatedProjects = siteData.projects.filter(p => centre.projects?.includes(p.slug) || p.associatedCentres?.includes(centre.slug));
   const associatedPeople = peopleList.filter(t => centre.people?.includes(t.slug) || t.centres?.includes(centre.slug));
-  const associatedEvents = staticEvents.filter(e => e.associatedCentres?.includes(centre.slug));
+  const associatedEvents = siteData.events.filter(e => e.associatedCentres?.includes(centre.slug));
 
   // Dynamic editorial controls
   const handleSaveCentre = async () => {
@@ -338,38 +347,43 @@ export default function CentreDetail() {
   };
 
   // Courses resolving (matches courses listed in centre config)
-  const matchingOnlineCourses = (onlineCourses || []).filter(oc => centre.courses?.includes(oc.slug));
-  const matchingResidentialCourses = (residentialCourses || []).filter(rc => centre.courses?.includes(rc.slug));
+  const matchingOnlineCourses = siteData.courses.filter(oc => !/residential/i.test(oc.type||'') && (centre.courses?.includes(oc.slug)||oc.associatedCentres?.includes(centre.slug)));
+  const matchingResidentialCourses = siteData.courses.filter(rc => /residential/i.test(rc.type||'') && (centre.courses?.includes(rc.slug)||rc.associatedCentres?.includes(centre.slug)));
 
   // Dossier tab compiling
   const tabsList = [
     {
       slug: 'aims',
-      title: 'Missions & Aims',
+      title: 'Research focus',
+      preview: centre.aims?.join(' · '),
       icon: 'aims',
       type: 'custom'
     },
     {
-      slug: 'people',
-      title: 'Faculty & Researchers',
-      icon: 'people',
-      type: 'custom'
-    },
-    {
       slug: 'projects',
-      title: 'Research Projects',
+      title: 'Projects',
+      preview: `${associatedProjects.length} connected projects`,
       icon: 'projects',
       type: 'custom'
     },
     {
+      slug: 'people',
+      title: 'People',
+      preview: `${associatedPeople.length} connected people`,
+      icon: 'people',
+      type: 'custom'
+    },
+    {
       slug: 'courses',
-      title: 'Courses & Masterclasses',
+      title: 'Learning',
+      preview: `${matchingOnlineCourses.length + matchingResidentialCourses.length} connected learning programmes`,
       icon: 'courses',
       type: 'custom'
     },
     {
       slug: 'publications',
-      title: 'Publications Dossier',
+      title: 'Publications',
+      preview: `${centre.publications?.length || 0} publications`,
       icon: 'publications',
       type: 'custom'
     },
@@ -378,8 +392,10 @@ export default function CentreDetail() {
 
   const activeTab = tabsList.find(t => t.slug === activeTabSlug) || tabsList[0];
 
-  return (
-    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure">
+  const renderRecordSection = (section: any) => <CentreChapter section={section} record={centre} people={associatedPeople} projects={associatedProjects} courses={[...matchingOnlineCourses,...matchingResidentialCourses]}/>;
+
+return (
+    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure record-page">
       <div className="max-w-[1600px] mx-auto">
         
         {/* Navigation Action Row */}
@@ -866,391 +882,29 @@ export default function CentreDetail() {
         ) : (
           <>
             {/* Hero Area */}
-        <div className="grid lg:grid-cols-2 gap-24 items-end mb-20 animate-fade-in">
-          <div>
-            <div className="flex items-center gap-4 mb-8">
-              <div className="font-mono text-[10px] font-bold border border-ink px-3 py-1 bg-white">
-                CENTRE // {centre.shortName}
-              </div>
-              <div className="px-4 py-1 text-[10px] font-mono font-black uppercase tracking-widest bg-brand-acid text-ink shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                Active Research Unit
-              </div>
-            </div>
-
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-black leading-tight uppercase mb-8">
-              {centre.name}
-            </h1>
-
-            <p className="font-serif text-2xl font-light italic leading-relaxed text-ink/80 max-w-xl">
-              {centre.tagline}
-            </p>
-          </div>
-
-          <div className="relative aspect-[16/10] lg:aspect-square border border-ink shadow-[20px_20px_0px_var(--color-brand-blue)] overflow-hidden bg-white animate-fade-in">
-            <img 
-              src={centre.image} 
-              alt={centre.name} 
-              className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
-              referrerPolicy="no-referrer"
-            />
+        <div className="record-summary-composition"><div className="record-summary-heading"><RecordHeading record={centre} kind="centre"/></div><div className="record-cover"><div className="relative aspect-[16/10] lg:aspect-square border border-ink shadow-[20px_20px_0px_var(--color-brand-blue)] overflow-hidden bg-white animate-fade-in">
+            <RecordImage src={centre.image} alt={centre.name} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"/>
             <div className="absolute top-4 right-4 bg-paper p-6 border border-ink shadow-[8px_8px_0px_rgba(0,0,0,1)]">
                <span className="font-mono font-black text-2xl opacity-40">{centre.shortName}</span>
             </div>
-          </div>
-        </div>
-
-        {/* Executive Description Banner */}
-        <div className="border-t border-ink pt-12 mb-20">
-          <div className="max-w-4xl">
-            <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-4">
-              Executive Focus
-            </div>
-            <p className="font-serif text-2xl md:text-3xl font-medium leading-relaxed italic text-ink/90">
-              {centre.description}
-            </p>
-          </div>
-        </div>
+          </div></div></div>
 
         {/* Interactive Dossier Tabs Grid */}
         <div className="border-t border-ink pt-16">
           <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2">
             <span className="w-12 h-[1px] bg-ink/20" />
-            Centre Intelligence Dossier
+            Explore this centre
           </div>
 
-          <div className="grid lg:grid-cols-12 gap-16 items-start">
-            {/* Tab Controls Sidebar */}
-            <div className="lg:col-span-3 lg:sticky lg:top-24">
-              <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0 scrollbar-none">
-                {tabsList.map((tab) => {
-                  const TabIcon = getIcon(tab.icon || 'Info');
-                  const isActive = activeTab.slug === tab.slug;
-                  return (
-                    <button
-                      key={tab.slug}
-                      onClick={() => setActiveTabSlug(tab.slug)}
-                      className={cn(
-                        "flex items-center gap-3.5 px-5 py-4 border text-left font-mono text-[10px] uppercase tracking-wider font-black transition-all shrink-0 lg:shrink",
-                        isActive 
-                          ? "bg-ink text-paper border-ink shadow-[4px_4px_0px_var(--color-brand-acid)]"
-                          : "bg-white hover:bg-brand-acid/15 border-ink/40 text-ink shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:border-ink hover:translate-x-0.5"
-                      )}
-                    >
-                      <TabIcon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{tab.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Research Access Box */}
-              <div className="mt-8 hidden lg:block p-8 border border-ink bg-brand-orange text-paper shadow-[8px_8px_0px_rgba(0,0,0,1)]">
-                <div className="font-black text-2xl uppercase tracking-tighter mb-2">Research Access:</div>
-                <p className="font-mono text-[10px] font-bold uppercase tracking-tighter opacity-90 leading-normal mb-6">
-                  To collaborate or license any linguistic datasets from our inventory, email our coordination hubs.
-                </p>
-                <a 
-                  href={`mailto:contact@diversity.org.in?subject=Inquiry: ${centre.name}`}
-                  className="font-mono text-[10px] font-black uppercase tracking-widest text-paper hover:text-brand-acid underline"
-                >
-                  Mail Coordinator &rarr;
-                </a>
-              </div>
-            </div>
-
-            {/* Tab Display Panel */}
-            <div className="lg:col-span-9 p-8 md:p-12 border-2 border-ink bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] min-h-[480px]">
-              
-              {/* Tab Header block */}
-              <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-ink/10">
-                <div className="p-3 bg-brand-acid text-ink border border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                  {(() => {
-                    const ActiveIcon = getIcon(activeTab.icon || 'Info');
-                    return <ActiveIcon className="w-5 h-5 text-ink" />;
-                  })()}
-                </div>
-                <div>
-                  <h2 className="font-serif text-3xl font-black text-ink uppercase leading-none">
-                    {activeTab.title}
-                  </h2>
-                  <p className="font-mono text-[9px] uppercase tracking-widest text-ink/40 font-bold mt-1">
-                    CENTRE INTELLIGENCE REGISTER // SECTION {activeTab.slug.toUpperCase()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Tab content switcher */}
-              <div className="animate-fade-in">
-                
-                {/* 1. Standard Aims Tab */}
-                {activeTab.slug === 'aims' && (
-                  <div className="space-y-12">
-                    <div className="space-y-6">
-                      {centre.aims.map((aim, i) => (
-                        <div 
-                          key={i} 
-                          className="flex gap-6 p-8 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-brand-acid/10 transition-colors"
-                        >
-                          <div className="font-mono text-2xl font-black text-brand-blue">
-                            0{i + 1}
-                          </div>
-                          <div>
-                            <p className="font-mono text-xs font-black uppercase tracking-wider text-ink leading-normal">
-                              {aim}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Operational Resource Cards */}
-                    {centre.relevantCards && centre.relevantCards.length > 0 && (
-                      <div className="pt-8 border-t border-ink/10">
-                        <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/30 mb-6">
-                          Operational Resources & Hardware
-                        </div>
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          {centre.relevantCards.map((card, i) => (
-                            <div 
-                              key={i}
-                              className="p-8 border border-ink bg-brand-acid/5 shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col justify-between"
-                            >
-                              <div className="flex items-center gap-3 mb-4 text-brand-orange">
-                                 <Star className="w-4 h-4 fill-current" />
-                                 <h4 className="font-mono text-xs font-black uppercase tracking-widest text-ink leading-none">
-                                   {card.title}
-                                 </h4>
-                              </div>
-                              <p className="font-mono text-[10px] font-bold uppercase tracking-tight text-ink/60 leading-normal">
-                                {card.description}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 2. Standard People Tab */}
-                {activeTab.slug === 'people' && (
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    {associatedPeople.map((person) => (
-                      <Link
-                        key={person.slug}
-                        to={`/people/${person.slug}`}
-                        className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-brand-acid hover:-translate-y-1 hover:shadow-[10px_10px_0px_rgba(0,0,0,1)] transition-all flex gap-4 items-center group text-ink"
-                      >
-                        <img 
-                          src={person.image || null} 
-                          alt={person.fullName || person.name} 
-                          className="w-16 h-16 object-cover border border-ink grayscale group-hover:grayscale-0 transition-transform duration-500 rounded-none shrink-0"
-                          referrerPolicy="no-referrer"
-                        />
-                        <div className="space-y-1 overflow-hidden pr-2">
-                           <h4 className="font-serif text-lg font-black leading-tight truncate">
-                             {person.fullName || person.name}
-                           </h4>
-                           <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight">
-                             {person.role}
-                           </p>
-                           <p className="font-mono text-[9px] text-brand-blue font-bold group-hover:underline lead-none">
-                             View Profile →
-                           </p>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-
-                {/* 3. Standard Projects Tab */}
-                {activeTab.slug === 'projects' && (
-                  <div className="grid gap-6">
-                    {associatedProjects.map((p) => (
-                      <Link
-                        key={p.slug}
-                        to={`/projects/${p.slug}`}
-                        className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-ink hover:text-paper group transition-all"
-                      >
-                        <div className="flex justify-between items-start mb-4">
-                          <span className="font-mono text-[9px] font-bold border border-current px-2 py-0.5">
-                            {p.id}
-                          </span>
-                          <span className="font-mono text-[8.5px] font-black uppercase bg-brand-acid text-ink px-2.5 py-0.5 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                            {p.tag}
-                          </span>
-                        </div>
-                        <h3 className="font-serif text-2xl font-black group-hover:text-brand-acid transition-colors leading-tight mb-2">
-                          {p.title}
-                        </h3>
-                        <p className="text-xs opacity-75 group-hover:opacity-100 mb-4 font-medium leading-relaxed">
-                          {p.description}
-                        </p>
-                        <div className="flex justify-between font-mono text-[9px] font-black uppercase tracking-wider">
-                          <span>Status: {p.status}</span>
-                          <span className="group-hover:translate-x-1 transition-transform">Explore &rarr;</span>
-                        </div>
-                      </Link>
-                    ))}
-                  </div>
-                )}
-
-                {/* 4. Standard Courses Tab */}
-                {activeTab.slug === 'courses' && (
-                  <div className="space-y-12">
-                    {/* Online iteration matching */}
-                    {matchingOnlineCourses.length > 0 && (
-                      <div>
-                        <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/30 mb-6 font-bold">
-                          Online Masterclasses & Certifications
-                        </div>
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          {matchingOnlineCourses.map(oc => (
-                            <Link
-                              key={oc.slug}
-                              to={`/academy/online/${oc.slug}`}
-                              className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-brand-acid transition-all flex flex-col justify-between text-ink"
-                            >
-                              <div>
-                                <div className="font-mono text-[9px] font-bold uppercase text-brand-orange bg-brand-orange/15 px-2.5 py-1 inline-block border border-brand-orange/20 mb-3">
-                                  {oc.type}
-                                </div>
-                                <h4 className="font-serif text-xl font-black mb-1 leading-tight">{oc.title}</h4>
-                                <p className="text-xs text-ink/65 mb-4 leading-relaxed line-clamp-2">{oc.description}</p>
-                              </div>
-                              <div className="font-mono text-[9.5px] text-brand-blue font-semibold border-t border-ink/10 pt-3 flex justify-between uppercase">
-                                <span>Credits: {oc.credits} // {oc.duration}</span>
-                                <span className="font-black group-hover:underline">Join →</span>
-                              </div>
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* On-Site/Residential Courses matching */}
-                    {matchingResidentialCourses.length > 0 && (
-                      <div className="pt-6 border-t border-ink/10">
-                        <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/30 mb-6 font-bold">
-                          Field-School Programs & Intensives
-                        </div>
-                        <div className="grid sm:grid-cols-2 gap-6">
-                          {matchingResidentialCourses.map(rc => (
-                            <Link
-                              key={rc.slug}
-                              to={`/academy/residential/${rc.slug}`}
-                              className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-brand-blue hover:text-white transition-all flex flex-col justify-between text-ink group"
-                            >
-                              <div className="group-hover:text-white">
-                                <div className="font-mono text-[9px] font-bold uppercase text-brand-blue bg-brand-blue/10 px-2.5 py-1 inline-block border border-brand-blue/20 group-hover:bg-white/10 group-hover:text-white mb-3">
-                                  On-Site Course // {rc.status}
-                                </div>
-                                <h4 className="font-serif text-xl font-black mb-1 group-hover:text-brand-acid leading-tight">{rc.title}</h4>
-                                <p className="font-mono text-[10px] opacity-65 leading-tight mb-4">{rc.location}</p>
-                              </div>
-                              <div className="font-mono text-[9.5px] text-brand-blue group-hover:text-white font-semibold border-t border-ink/10 group-hover:border-white/10 pt-3 flex justify-between uppercase leading-none">
-                                <span>{rc.dates}</span>
-                                <span className="font-black">Explore →</span>
-                              </div>
-                            </Link>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {matchingOnlineCourses.length === 0 && matchingResidentialCourses.length === 0 && (
-                      <div className="p-8 border border-ink/20 text-center font-mono text-xs text-ink/40 uppercase">
-                        No active courses currently assigned to this research centre
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 5. Standard Publications Tab */}
-                {activeTab.slug === 'publications' && (
-                  <div className="space-y-6">
-                    {centre.publications && centre.publications.map((pub, idx) => (
-                      <div 
-                        key={idx}
-                        className="p-8 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:-translate-y-1 hover:shadow-[10px_10px_0px_rgba(0,0,0,1)] transition-all flex items-start gap-6"
-                      >
-                        <div className="p-4 bg-brand-orange text-paper border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] shrink-0">
-                          <BookOpen className="w-6 h-6" />
-                        </div>
-                        <div className="space-y-2 overflow-hidden">
-                          <h4 className="font-serif text-xl font-black tracking-tight leading-snug">
-                            "{pub.title}"
-                          </h4>
-                          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-ink/65">
-                            By {pub.authors} &bull; {pub.year}
-                          </p>
-                          <div className="inline-block font-mono text-[9px] font-black bg-brand-acid/20 text-brand-blue border border-brand-blue/30 px-2 py-0.5 rounded-none uppercase">
-                            {pub.journal}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* 6. Custom Sub-Pages Rendering (as in Event / Project descriptions) */}
-                {activeTab.type === 'markdown' && (
-                  <div className="space-y-6">
-                    {(activeTab as any).content?.teaser && (
-                      <p className="font-serif text-2xl italic leading-relaxed text-ink/80 border-l-4 border-brand-orange pl-6 mb-8 uppercase tracking-tight">
-                        {(activeTab as any).content.teaser}
-                      </p>
-                    )}
-                    <div 
-                      className="prose max-w-none text-ink text-sm leading-relaxed font-sans tracking-tight bg-paper/50 p-6 border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] text-left"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown((activeTab as any).content?.markdown || '') }}
-                    />
-                  </div>
-                )}
-                
-              </div>
-            </div>
-          </div>
+          <RecordExperience key={centre.slug} title={centre.name} sections={[...tabsList,{slug:'writing-media',title:'Writing & media',type:'writing'}]} activeSection={activeTabSlug} onActiveSectionChange={setActiveTabSlug} renderSection={section=>section.type==='writing'?<ConnectedWriting type="centre" slug={centre.slug}/>: renderRecordSection(section)} glance={<RecordGlance record={centre} kind="centre"/>}/>
         </div>
         </>
         )}
 
-        {/* Dynamic Connected Events Listing */}
-        {associatedEvents.length > 0 && (
-          <div className="mt-32 pt-24 border-t border-ink">
-            <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2">
-              <span className="w-12 h-[1px] bg-ink/20" />
-              Connected Centre Events & Sprints
-            </div>
-            <div className="grid md:grid-cols-2 gap-8">
-              {associatedEvents.map((e) => (
-                <Link
-                  key={e.slug}
-                  to={`/events/${e.slug}`}
-                  className="p-8 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-brand-blue hover:text-white group transition-all"
-                >
-                  <div className="flex flex-wrap items-center gap-3 text-[9px] font-mono uppercase text-ink/50 group-hover:text-white/70 mb-4">
-                    <span className="border border-current px-2.5 py-0.5 bg-paper text-ink group-hover:bg-brand-acid group-hover:text-ink">
-                      {e.type}
-                    </span>
-                    <span>{e.dates}</span>
-                  </div>
-                  <h3 className="font-serif text-2xl font-black group-hover:text-brand-acid transition-colors mb-2">
-                    {e.title}
-                  </h3>
-                  <p className="text-xs opacity-75 group-hover:opacity-90 leading-relaxed mb-4">
-                    {e.description}
-                  </p>
-                  <div className="flex justify-end font-mono text-[9px] font-black uppercase tracking-widest text-brand-blue group-hover:text-brand-acid leading-none">
-                    Review Docket &rarr;
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
+        {associatedEvents.length>0&&<section className="dossier-subsection"><h2>Events & activity</h2><ConnectedRecords items={associatedEvents} family="events"/></section>}
 
       </div>
+      <ActivityUpdates kind="centre" slug={centre.slug} />
     </div>
   );
 }

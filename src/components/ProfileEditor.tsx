@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import {
   Save,
   X,
@@ -39,7 +39,7 @@ interface ProfileEditorProps {
   editImage: string;
   setEditImage: (v: string) => void;
   editBannerImages: string[];
-  setEditBannerImages: (v: string[]) => void;
+  setEditBannerImages: Dispatch<SetStateAction<string[]>>;
   editEducation: Education[];
   setEditEducation: (v: Education[]) => void;
   editExperience: Experience[];
@@ -184,6 +184,8 @@ export function ProfileEditor({
   // Local state for Link creation
   const [newLinkName, setNewLinkName] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [uploadingCovers,setUploadingCovers]=useState(false);
+  const [coverUploadError,setCoverUploadError]=useState("");
   const [newBannerUrlInput, setNewBannerUrlInput] = useState("");
 
   // Local states for custom Event / Calendar mapping (Requirement 3)
@@ -274,7 +276,7 @@ export function ProfileEditor({
       const processed = getDriveImageUrl(newBannerUrlInput.trim());
       if (processed) {
         const finalUrl = await uploadToCloudinary({ imageUrl: processed });
-        setEditBannerImages([...editBannerImages, finalUrl]);
+        setEditBannerImages(previous=>[...previous,finalUrl]);
         setNewBannerUrlInput("");
       }
     }
@@ -295,6 +297,7 @@ export function ProfileEditor({
           <button
             type="button"
             onClick={handleSave}
+            disabled={uploadingCovers || isUploadingCloudinary}
             className="h-10 px-5 bg-brand-blue text-paper border border-ink font-mono text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-ink hover:text-white transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] cursor-pointer"
           >
             <Save className="w-3.5 h-3.5" /> Save Overrides
@@ -490,35 +493,45 @@ export function ProfileEditor({
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-1.5 px-3 py-1.5 border border-ink bg-ink text-paper text-[9.5px] font-mono font-black uppercase hover:bg-brand-acid hover:text-ink cursor-pointer transition-colors">
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Select Banner</span>
+                      <span>{uploadingCovers?"Uploading covers…":"Select cover images"}</span>
                       <input
                         type="file"
+                        multiple
+                        aria-label="Upload cover images"
+                        disabled={uploadingCovers}
                         accept="image/*"
                         className="hidden"
                         onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = async () => {
-                              const base64 = reader.result as string;
-                              const uploadedUrl = await uploadToCloudinary({ dataUrl: base64 });
-                              setEditBannerImages([...editBannerImages, uploadedUrl]);
-                            };
-                            reader.readAsDataURL(file);
-                          }
+                          const files = Array.from(e.target.files || []) as File[];
+                          e.target.value = "";
+                          setUploadingCovers(true);setCoverUploadError("");
+                          try {
+                            for (const file of files) {
+                              const dataUrl = await new Promise<string>((resolve,reject)=>{
+                                const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error("Could not read image"));reader.readAsDataURL(file);
+                              });
+                              const url=await uploadToCloudinary({dataUrl});
+                              if(!url)throw new Error("Image upload did not return a URL");
+                              setEditBannerImages(previous=>[...previous,url]);
+                            }
+                          } catch(error) {setCoverUploadError("A cover could not be uploaded. Uploaded covers have been kept; please retry the remaining images.");}
+                          finally {setUploadingCovers(false);}
+
                         }}
                       />
                     </label>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 gap-2 pt-2">
+                {coverUploadError&&<p role="alert">{coverUploadError}</p>}
+                <div className="grid grid-cols-2 gap-3 pt-2">
                   {editBannerImages.map((bURL, idx) => (
                     <div key={idx} className="aspect-video border border-ink/40 relative group overflow-hidden bg-white">
-                      <img src={getDriveImageUrl(bURL) || ""} className="w-full h-full object-cover grayscale" alt="" />
+                      <img src={getDriveImageUrl(bURL) || ""} className="w-full h-full object-contain" alt={`Cover ${idx+1}`} />
                       <button
                         type="button"
-                        onClick={() => setEditBannerImages(editBannerImages.filter((_, i) => i !== idx))}
+                        aria-label={`Remove cover ${idx+1}`}
+                        onClick={() => setEditBannerImages(previous=>previous.filter((_, i) => i !== idx))}
                         className="absolute top-0.5 right-0.5 bg-brand-orange text-white p-0.5 text-[8px] font-bold"
                       >
                         ×
@@ -1308,6 +1321,7 @@ export function ProfileEditor({
         <button
           type="button"
           onClick={handleSave}
+            disabled={uploadingCovers || isUploadingCloudinary}
           className="h-14 px-8 bg-brand-blue text-paper border border-ink font-mono text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-ink transition-colors cursor-pointer shadow-[5px_5px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[5px] hover:translate-y-[5px]"
         >
           <Save className="w-4 h-4" /> Save overrides and build directory

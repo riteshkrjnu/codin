@@ -1,0 +1,59 @@
+/* Theme adapter: decoration only; never hide actions or change page behaviour. */
+.codin-site .functional-page { padding: 2rem 0 3rem; min-width: 0; }
+.codin-site .functional-page > div:first-child { padding-top: 1rem; }
+.codin-site .functional-page .grid-structure { background-image: none; }
+.codin-site .functional-page .font-mono { font-family: var(--font-sans); letter-spacing: .015em; }
+.codin-site .functional-page .text-outline { -webkit-text-stroke: 0; color: var(--accent); }
+.codin-site .functional-page [class*='shadow-['],
+.codin-site .functional-page .brutalist-card { box-shadow: none; }
+.codin-site .functional-page h1 { font-size: clamp(2.3rem, 4.5vw, 4.5rem); line-height: 1.12; letter-spacing: -.035em; }
+.codin-site .functional-page .font-black { font-weight: 600; }
+.codin-site .functional-page .border-ink { border-color: var(--line); }
+.codin-site .functional-page button { border-radius: 4px; }
+@media (max-width: 650px) {
+  .codin-site .functional-page { padding-top: 1rem; }
+  .codin-site .functional-page h1 { overflow-wrap: anywhere; }
+}
+.codin-site .functional-page h1,
+.codin-site .functional-page h2,
+.codin-site .functional-page h3 { font-style: normal; font-weight: 400; }
+.codin-site .functional-page h3 { text-transform: none; line-height: 1.25; }
+.codin-site .functional-page img.grayscale { filter: none; }
+/* New page composition, with the existing controllers supplying functional content. */
+.codin-site .functional-page > div:first-child > div { max-width: none; }
+.codin-site .functional-page .page-heading h1 { font-size: clamp(2.8rem,4.8vw,5rem); }
+.codin-site .record-cover { margin-bottom: 2.5rem; }
+.codin-site .record-cover > div { aspect-ratio: auto; height: clamp(220px,34vw,440px); border: 0; }
+.codin-site .record-cover img { width: 100%; height: 100%; object-fit: cover; }
+.codin-site .record-detail-layout, .codin-site .record-person-layout { display: grid; grid-template-columns: minmax(0,1fr) 300px; gap: 3rem; align-items: start; }
+.codin-site .record-detail-sidebar, .codin-site .record-person-sidebar { grid-column: 2; grid-row: 1; min-width: 0; }
+.codin-site .record-detail-main, .codin-site .record-person-main { grid-column: 1; grid-row: 1; min-width: 0; }
+.codin-site .record-detail-main { padding: 0; border: 0; background: transparent; }
+.codin-site .record-detail-sidebar > div, .codin-site .record-person-sidebar > div { border-color: var(--line); }
+.codin-site .record-event-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(260px,320px); gap: 2.5rem; align-items: start; }
+.codin-site .record-section-navigation { grid-column: 1 / -1; overflow: auto; }
+.codin-site .record-section-navigation > div { display: flex; flex-direction: row; gap: .5rem; flex-wrap: wrap; }
+.codin-site .record-event-layout > .record-detail-main { grid-row: 2; }
+.codin-site .record-event-layout > .record-registration-sidebar { grid-column: 2; grid-row: 2; }
+.codin-site .record-event-layout > .lg\:col-span-8 { grid-column: 1 / -1; }
+.codin-site .profile-cover { overflow: hidden; margin-bottom: 2rem; }
+.codin-site .profile-cover-viewport { position: relative; height: 230px; }
+.codin-site .profile-cover-viewport > img { width: 100%; height: 100%; object-fit: cover; }
+.codin-site .profile-portrait { width: 100%; max-width: 300px; margin: 0 auto 2rem; }
+.codin-site .course-public-detail .detail-layout > div { min-width: 0; }
+.codin-site .section-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem 0; }
+.codin-site .record-actions { display: flex; flex-wrap: wrap; gap: .75rem; padding: 1rem 1.5rem; border-top: 1px solid var(--line); font-size: .8rem; }
+.codin-site .record-actions button, .codin-site .editor-state-tools button { border: 1px solid var(--line); padding: .4rem .8rem; background: var(--paper); color: var(--ink); }
+.codin-site .event-entry .record-actions { grid-column: 2 / -1; padding: .8rem 0; }
+.codin-site .editor-state-tools { display: flex; gap: .5rem; margin: 1rem 0; font-size: .8rem; }
+.codin-site .editor-state-tools [aria-pressed=true] { background: var(--ink); color: var(--paper); }
+.codin-site .catalogue-advanced { margin: 1rem 0; padding: .75rem 0; }
+.codin-site .catalogue-advanced summary { font-size: .85rem; }
+.codin-site .advanced-filter-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(200px,1fr)); gap: 1rem; padding: 1rem 0; font-size: .8rem; }
+.codin-site .advanced-filter-grid input, .codin-site .advanced-filter-grid select { display: block; padding: .6rem; border: 1px solid var(--line); width: 100%; margin-top: .5rem; color: var(--ink); background: var(--paper); }
+@media(max-width:900px) {
+  .codin-site .record-detail-layout, .codin-site .record-person-layout, .codin-site .record-event-layout { grid-template-columns: 1fr; gap: 2rem; }
+  .codin-site .record-detail-layout > *, .codin-site .record-person-layout > *, .codin-site .record-event-layout > .record-detail-main, .codin-site .record-event-layout > .record-registration-sidebar { grid-column: 1; grid-row: auto; }
+  .codin-site .record-detail-sidebar { order: -1; }
+  .codin-site .record-detail-sidebar > div:first-child { flex-direction: row; flex-wrap: wrap; }
+}

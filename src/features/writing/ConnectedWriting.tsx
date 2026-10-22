@@ -1,0 +1,6 @@
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useSiteData, dateLabel } from '../../site/data';
+import { resourceLibrary } from '../../site/resources';
+import { connectedResources, resolveConnections } from './connections';
+export default function ConnectedWriting({type,slug}:{type:string;slug:string}){const {data}=useSiteData(),[category,setCategory]=useState('All');const items=connectedResources(resourceLibrary(data),data,type,slug),categories=['All',...new Set(items.flatMap(r=>r.categories?.length?r.categories:[r.kind||'Articles']))];return <section className="connected-writing"><h2>Writing & media</h2><div className="filters" role="group" aria-label="Content categories">{categories.map(c=><button key={c} aria-pressed={category===c} onClick={()=>setCategory(c)}>{c}</button>)}</div>{items.filter(r=>category==='All'||(r.categories?.length?r.categories:[r.kind||'Articles']).includes(category)).map(r=><article key={r.slug}><p className="eyebrow">{(r.categories||[r.kind]).join(' · ')} · {dateLabel(r.publishedAt)}</p><h3><Link to={`/resources/${r.slug}`}>{r.title} ↗</Link></h3><p>{r.description}</p><small>{resolveConnections(r,data).find(c=>c.type===type&&c.slug===slug)?.via}</small></article>)}{!items.length&&<p>Published writing, reports and media connected to this work will appear here.</p>}</section>;}

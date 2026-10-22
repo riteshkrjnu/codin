@@ -68,6 +68,7 @@ export default function HomeBulletins() {
     link: '',
     status: 'Ongoing',
     highlighted: false,
+    deadline: '', publishAt: '', expiresAt: '', pinned: false, sourceId: '',
     showInBulletin: true
   });
 
@@ -81,45 +82,26 @@ export default function HomeBulletins() {
     actionLink: '',
     badge: '',
     status: 'Ongoing',
+    deadline: '', publishAt: '', expiresAt: '', pinned: false, sourceId: '',
     showInBulletin: true
   });
 
   const fetchData = async () => {
     try {
-      const [annRes, notifRes, coursesRes, eventsRes] = await Promise.all([
-        fetch('/api/announcements'),
-        fetch('/api/w2m-notifications'),
-        fetch('/api/courses'),
-        fetch('/api/events')
-      ]);
-
-      const annText = await annRes.text();
-      const notifText = await notifRes.text();
-      const coursesText = await coursesRes.text();
-      const eventsText = await eventsRes.text();
-
-      let annData: any = {};
-      let notifData: any = {};
-      let coursesData: any = {};
-      let eventsData: any = {};
-
-      if (annText.trim().startsWith('{')) {
-        try { annData = JSON.parse(annText); } catch (e) { console.error("Failed to parse announcements JSON", e); }
+      const response = await fetch('/api/activity-feed');
+      if (!response.ok) throw new Error('Activity feed unavailable');
+      const { items } = await response.json();
+      if (isAdmin) {
+        const [ann, notif] = await Promise.all([fetch('/api/announcements').then(r=>r.json()),fetch('/api/w2m-notifications').then(r=>r.json())]);
+        const manual = [...ann.announcements, ...notif.notifications];
+        const linked = new Set(manual.map(x=>x.sourceId || (x.link || x.actionLink || '').split('/').filter(Boolean).at(-1)));
+        setDbAnnouncements([...items.filter((x:any)=>x.isDynamic && !linked.has(x.sourceId)),...ann.announcements.map((n:any)=>({...n,status:items.find((x:any)=>String(x._id)===String(n._id))?.status || n.status}))]);
+        setDbNotifications(notif.notifications.map((n:any)=>({...n,status:items.find((x:any)=>String(x._id)===String(n._id))?.status || n.status})));
+      } else {
+        setDbAnnouncements(items.filter((x: any) => x.sourceCollection !== 'w2mnotifications'));
+        setDbNotifications(items.filter((x: any) => x.sourceCollection === 'w2mnotifications'));
       }
-      if (notifText.trim().startsWith('{')) {
-        try { notifData = JSON.parse(notifText); } catch (e) { console.error("Failed to parse notifications JSON", e); }
-      }
-      if (coursesText.trim().startsWith('{')) {
-        try { coursesData = JSON.parse(coursesText); } catch (e) { console.error("Failed to parse courses JSON", e); }
-      }
-      if (eventsText.trim().startsWith('{')) {
-        try { eventsData = JSON.parse(eventsText); } catch (e) { console.error("Failed to parse events JSON", e); }
-      }
-
-      if (annData.announcements) setDbAnnouncements(annData.announcements);
-      if (notifData.notifications) setDbNotifications(notifData.notifications);
-      if (coursesData.courses) setCourses(coursesData.courses);
-      if (eventsData.events) setEvents(eventsData.events);
+      setCourses([]); setEvents([]);
     } catch (err) {
       console.error("Error loading CoDIN Intelligence feeds:", err);
     } finally {
@@ -129,104 +111,11 @@ export default function HomeBulletins() {
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [user?.id]);
 
   // Compute dynamic lists
-  const { announcementsList, w2mNotificationsList } = useMemo(() => {
-    // Filter out deleted/draft/trashed announcements and notifications
-    const listAnns = dbAnnouncements.filter(a => !a.deleted && a.status !== 'Draft' && a.status !== 'Trash');
-    const listNotifs = dbNotifications.filter(n => !n.deleted && n.status !== 'Draft' && n.status !== 'Trash');
-
-    // 1. Resolve online courses dynamic notifications & announcements
-    courses.forEach((oc) => {
-      if (oc.deleted || oc.status === 'Draft' || oc.status === 'Trash' || oc.status === 'Closed') return;
-      if (oc.type !== 'W2M Residential Course' && oc.type !== 'Residential') {
-        listAnns.push({
-          id: `ann-course-${oc.slug}`,
-          _id: `ann-course-${oc.slug}`,
-          category: 'Milestone',
-          title: `Enrollment Update: ${oc.title} is now "${oc.status}"`,
-          date: 'Active',
-          description: `${oc.description || ''} Course credits: ${oc.credits || 0}, duration: ${oc.duration || 'Flexible'}.`,
-          link: `/academy/online/${oc.slug}`,
-          status: oc.status,
-          highlighted: oc.status === 'Active' || oc.status === 'Enrollment Open' || oc.status === 'Enrolling Soon',
-          isDynamic: true
-        });
-
-        listNotifs.push({
-          id: `not-course-${oc.slug}`,
-          _id: `not-course-${oc.slug}`,
-          type: 'Certification',
-          title: `W2M Academy: ${oc.title} registration is ${oc.status}`,
-          date: 'Enrolling',
-          description: `Micro-certification path. Credits: ${oc.credits}. Duration: ${oc.duration}. ${oc.description || ''}`,
-          actionText: 'Review Syllabus',
-          actionLink: `/academy/online/${oc.slug}`,
-          badge: oc.status === 'Coming Soon' ? 'Coming' : 'Open',
-          status: oc.status,
-          isDynamic: true
-        });
-      }
-    });
-
-    // 2. Resolve events dynamic notifications & announcements
-    events.forEach((ev) => {
-      if (ev.deleted || ev.status === 'Draft' || ev.status === 'Trash' || ev.status === 'Archived') return;
-      listAnns.push({
-        id: `ann-event-${ev.slug}`,
-        _id: `ann-event-${ev.slug}`,
-        category: 'Upcoming Event',
-        title: `${ev.title}`,
-        date: ev.dates,
-        description: `${ev.description || ''} Venue scheduled: ${ev.location}. Status: ${ev.status}. Submit registration before the specified gates.`,
-        link: `/events/${ev.slug}`,
-        status: ev.status,
-        highlighted: ev.status === 'Upcoming' || ev.status === 'Ongoing',
-        isDynamic: true
-      });
-    });
-
-    // 3. Resolve residential courses (on-site) dynamic notifications
-    courses.forEach((rc) => {
-      if (rc.deleted || rc.status === 'Draft' || rc.status === 'Trash' || rc.status === 'Closed' || rc.status === 'Completed' || rc.status === 'Archived') return;
-      if (rc.type === 'W2M Residential Course' || rc.type === 'Residential') {
-        listNotifs.push({
-          id: `not-res-${rc.slug}`,
-          _id: `not-res-${rc.slug}`,
-          type: 'Field Call',
-          title: `Seats Active: ${rc.title} - ${rc.location}`,
-          date: rc.dates,
-          description: `Apply for specialized immersive field methods cohort at ${rc.location}. ${rc.tagline || ''}`,
-          actionText: 'Apply for Seats',
-          actionLink: `/academy/residential/${rc.slug}`,
-          badge: 'On-Site Only',
-          status: rc.status,
-          isDynamic: true
-        });
-      }
-    });
-
-    // 4. Automatically map Recruitment notifications to Council Announcements column too!
-    listNotifs.forEach((notif) => {
-      if (notif.type === 'Recruitment') {
-        listAnns.push({
-          id: `ann-mirror-${notif._id || notif.id}`,
-          _id: `ann-mirror-${notif._id || notif.id}`,
-          category: 'Policy',
-          title: `Recruitment Update: ${notif.title}`,
-          date: notif.date,
-          description: notif.description,
-          link: notif.actionLink || undefined,
-          status: notif.status || 'Ongoing',
-          highlighted: true,
-          isMirror: true
-        });
-      }
-    });
-
-    return { announcementsList: listAnns, w2mNotificationsList: listNotifs };
-  }, [dbAnnouncements, dbNotifications, courses, events]);
+  const announcementsList = dbAnnouncements;
+  const w2mNotificationsList = dbNotifications;
 
   // Apply filters and sort by status hierarchy: Ongoing -> Upcoming -> Completed -> Archived
   const filteredAnnouncements = useMemo(() => {
@@ -282,7 +171,8 @@ export default function HomeBulletins() {
       link: '',
       status: 'Ongoing',
       highlighted: false,
-      showInBulletin: true
+      deadline: '', publishAt: '', expiresAt: '', pinned: false, sourceId: '',
+    showInBulletin: true
     });
     setIsAnnModalOpen(true);
   };
@@ -297,6 +187,7 @@ export default function HomeBulletins() {
       link: ann.link || '',
       status: ann.status || 'Ongoing',
       highlighted: !!ann.highlighted,
+      deadline: ann.deadline || '', publishAt: ann.publishAt || '', expiresAt: ann.expiresAt || '', pinned: !!ann.pinned, sourceId: ann.sourceId || '',
       showInBulletin: ann.showInBulletin !== false
     });
     setIsAnnModalOpen(true);
@@ -313,7 +204,8 @@ export default function HomeBulletins() {
       actionLink: '',
       badge: '',
       status: 'Ongoing',
-      showInBulletin: true
+      deadline: '', publishAt: '', expiresAt: '', pinned: false, sourceId: '',
+    showInBulletin: true
     });
     setIsNotifModalOpen(true);
   };
@@ -329,6 +221,7 @@ export default function HomeBulletins() {
       actionLink: notif.actionLink || '',
       badge: notif.badge || '',
       status: notif.status || 'Ongoing',
+      deadline: notif.deadline || '', publishAt: notif.publishAt || '', expiresAt: notif.expiresAt || '', pinned: !!notif.pinned, sourceId: notif.sourceId || '',
       showInBulletin: notif.showInBulletin !== false
     });
     setIsNotifModalOpen(true);
@@ -800,6 +693,14 @@ export default function HomeBulletins() {
             </div>
 
             <form onSubmit={handleAnnSubmit} className="p-6 space-y-4">
+              <fieldset className="border border-ink/20 p-3 space-y-2">
+                <legend>Publishing schedule</legend>
+                <label className="block">Publish date<input aria-label="Publish date" type="date" className="block border p-2 w-full" value={annForm.publishAt} onChange={e => setAnnForm({...annForm, publishAt: e.target.value})}/></label>
+                <label className="block">Application / notice deadline (IST)<input aria-label="Notice deadline" type="date" className="block border p-2 w-full" value={annForm.deadline} onChange={e => setAnnForm({...annForm, deadline: e.target.value})}/></label>
+                <label className="block">Expiry date<input aria-label="Expiry date" type="date" className="block border p-2 w-full" value={annForm.expiresAt} onChange={e => setAnnForm({...annForm, expiresAt: e.target.value})}/></label>
+                <label className="block">Linked activity slug<input className="block border p-2 w-full" value={annForm.sourceId} onChange={e => setAnnForm({...annForm, sourceId: e.target.value})}/></label>
+                <label><input type="checkbox" checked={annForm.pinned} onChange={e => setAnnForm({...annForm, pinned: e.target.checked})}/> Pin this notice</label>
+              </fieldset>
               <div>
                 <label className="block font-mono text-[10px] font-bold uppercase mb-1">Title (Required)</label>
                 <input 
@@ -940,6 +841,14 @@ export default function HomeBulletins() {
             </div>
 
             <form onSubmit={handleNotifSubmit} className="p-6 space-y-4">
+              <fieldset className="border border-ink/20 p-3 space-y-2">
+                <legend>Publishing schedule</legend>
+                <label className="block">Publish date<input aria-label="Publish date" type="date" className="block border p-2 w-full" value={notifForm.publishAt} onChange={e => setNotifForm({...notifForm, publishAt: e.target.value})}/></label>
+                <label className="block">Application / notice deadline (IST)<input aria-label="Notice deadline" type="date" className="block border p-2 w-full" value={notifForm.deadline} onChange={e => setNotifForm({...notifForm, deadline: e.target.value})}/></label>
+                <label className="block">Expiry date<input aria-label="Expiry date" type="date" className="block border p-2 w-full" value={notifForm.expiresAt} onChange={e => setNotifForm({...notifForm, expiresAt: e.target.value})}/></label>
+                <label className="block">Linked activity slug<input className="block border p-2 w-full" value={notifForm.sourceId} onChange={e => setNotifForm({...notifForm, sourceId: e.target.value})}/></label>
+                <label><input type="checkbox" checked={notifForm.pinned} onChange={e => setNotifForm({...notifForm, pinned: e.target.checked})}/> Pin this notice</label>
+              </fieldset>
               <div>
                 <label className="block font-mono text-[10px] font-bold uppercase mb-1">Title (Required)</label>
                 <input 

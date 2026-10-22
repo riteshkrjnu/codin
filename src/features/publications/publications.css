@@ -1,0 +1,18 @@
+/* A self-contained view: no dependency on profile layout or API format. */
+.codin-site .publication-list { min-width: 0; }
+.codin-site .publication-tools { display: flex; gap: 1rem; align-items: end; flex-wrap: wrap; }
+.codin-site .publication-tools label { display: grid; gap: .4rem; font: 500 .8rem var(--font-sans); }
+.codin-site .publication-tools label:first-child { flex: 1 1 200px; }
+.codin-site .publication-tools input, .codin-site .publication-tools select { width: 100%; min-width: 0; padding: .7rem; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; font: inherit; }
+.codin-site .publication-count { font-size: .8rem; opacity: .8; margin: 1rem 0; }
+.codin-site .publication-records { list-style: none; padding: 0; margin: 0; }
+.codin-site .publication-records > li { display: grid; grid-template-columns: 4.2rem minmax(0,1fr); gap: 1rem; padding: 1.3rem 0; border-top: 1px solid var(--line); }
+.codin-site .publication-year { font: 500 .85rem var(--font-sans); color: var(--accent); padding-top: .15rem; }
+.codin-site .publication-citation { min-width: 0; overflow-wrap: anywhere; }
+.codin-site .publication-citation h4 { font: 500 1.05rem/1.6 var(--font-sans); margin: 0 0 .5rem; letter-spacing: normal; text-transform: none; }
+.codin-site .publication-citation h4 a { text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: .2em; }
+.codin-site .publication-citation p { font-size: .9rem; line-height: 1.6; margin: .3rem 0; }
+.codin-site .publication-venue { opacity: .8; }
+.codin-site .publication-meta { display: flex; flex-wrap: wrap; gap: 1rem; font-size: .75rem; margin-top: .6rem; opacity: .8; }
+.codin-site .publication-empty { padding: 1rem 0; font-size: .9rem; }
+@media(max-width:480px) { .codin-site .publication-records > li { grid-template-columns: 1fr; gap: .4rem; } }

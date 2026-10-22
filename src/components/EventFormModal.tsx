@@ -1,3 +1,7 @@
+import ParticipationPhaseEditor from './ParticipationPhaseEditor';
+import { validateParticipationPhases, type ParticipationPhase } from '../lib/participation';
+import CourseOverviewEditor from './CourseOverviewEditor';
+import { courseOverviewPages, isResidentialCourse } from '../site/coursePresentation';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -91,6 +95,7 @@ export default function EventFormModal({
   const [eventDates, setEventDates] = useState('');
   const [eventLocation, setEventLocation] = useState('');
   const [eventStatus, setEventStatus] = useState('Upcoming');
+  const [registrationState, setRegistrationState] = useState('closed');
   const [eventDesc, setEventDesc] = useState('');
   const [eventLongDesc, setEventLongDesc] = useState('');
   const [eventImage, setEventImage] = useState('https://images.unsplash.com/photo-1540575467063-178a50c2df87');
@@ -121,6 +126,7 @@ export default function EventFormModal({
   const [regDesc, setRegDesc] = useState('Exclusive cohort limited to 15 participants for deep mentorship.');
   const [regBtnText, setRegBtnText] = useState('Apply for Admission');
   const [regBtnLink, setRegBtnLink] = useState('');
+  const [actionPhases,setActionPhases]=useState<ParticipationPhase[]>([]);
   const [regHighlights, setRegHighlights] = useState('Intensive study track, Industry mentorship, Certifications');
   const [paymentMsgChoice, setPaymentMsgChoice] = useState<'markdown' | 'link'>('markdown');
   const [paymentMarkdown, setPaymentMarkdown] = useState('');
@@ -500,6 +506,7 @@ export default function EventFormModal({
       setEventDates(eventToEdit.dates || '');
       setEventLocation(eventToEdit.location || '');
       setEventStatus(eventToEdit.status || 'Upcoming');
+      setRegistrationState(eventToEdit.registrationState || (eventToEdit.storedStatus === 'Enrollment Open' ? 'open' : 'closed'));
       setEventDesc(eventToEdit.description || '');
       setEventLongDesc(eventToEdit.longDescription || '');
       setEventImage(eventToEdit.image || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87');
@@ -512,6 +519,7 @@ export default function EventFormModal({
       setSponsors(eventToEdit.sponsors || []);
       setDraftPresenters(eventToEdit.presenters || []);
 
+      setActionPhases(eventToEdit.registrationCard?.actionPhases||[]);
       if (eventToEdit.registrationCard) {
         setRegTitle(eventToEdit.registrationCard.title || 'Secure Your Spot');
         setRegDesc(eventToEdit.registrationCard.description || 'Exclusive cohort limited to 15 participants for deep mentorship.');
@@ -576,7 +584,7 @@ export default function EventFormModal({
           }
           return p;
         });
-        setCustomPages(syncedPages);
+        setCustomPages(eventToEdit.isCourse||isResidentialCourse(eventToEdit)?courseOverviewPages({...eventToEdit,subPages:syncedPages}):syncedPages);
         setActiveSubTabSlug(eventToEdit.subPages[0]?.slug || 'overview');
       } else {
         const initialPages: any[] = [
@@ -601,7 +609,7 @@ export default function EventFormModal({
             }
           });
         }
-        setCustomPages(initialPages);
+        setCustomPages(eventToEdit.isCourse||isResidentialCourse(eventToEdit)?courseOverviewPages({...eventToEdit,subPages:initialPages}):initialPages);
         setActiveSubTabSlug('overview');
       }
     } else {
@@ -612,6 +620,7 @@ export default function EventFormModal({
       setEventDates('');
       setEventLocation('');
       setEventStatus('Upcoming');
+      setRegistrationState('closed');
       setEventDesc('');
       setEventLongDesc('');
       setEventImage('https://images.unsplash.com/photo-1540575467063-178a50c2df87');
@@ -627,6 +636,7 @@ export default function EventFormModal({
       setRegDesc('Exclusive cohort limited to 15 participants for deep mentorship.');
       setRegBtnText('Apply for Admission');
       setRegBtnLink('');
+      setActionPhases([]);
       setRegHighlights('Intensive study track, Industry mentorship, Certifications');
       setPaymentMsgChoice('markdown');
       setPaymentMarkdown('');
@@ -910,6 +920,8 @@ export default function EventFormModal({
     let tabContent: any = {};
     if (newPageType === 'markdown') {
       tabContent = { teaser: newPageTeaser, markdown: newPageMarkdown };
+    } else if (newPageType === 'course_overview') {
+      tabContent = customPages.find(p=>p.slug===editingPageSlug)?.content || {description:'',modules:[]};
     } else if (newPageType === 'dates') {
       tabContent = draftDatesList;
     } else if (newPageType === 'schedule') {
@@ -996,6 +1008,8 @@ export default function EventFormModal({
   // Submit complete details modification
   const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const phaseError=validateParticipationPhases(actionPhases);
+    if(phaseError){alert(phaseError);return;}
     if (!eventTitle) return;
 
     const formattedDatesStr = eventStartDate ? formatEventDates(eventStartDate, eventEndDate) : eventDates;
@@ -1076,16 +1090,19 @@ export default function EventFormModal({
       });
     }
 
+    if(isCourseParam)finalSubPages=courseOverviewPages({...eventToEdit,type:finalType,subPages:finalSubPages});
+
     const savedEventObj = {
       ...(eventToEdit || {}),
       title: eventTitle,
       slug: eventSlug,
       type: finalType,
-      dates: formattedDatesStr,
+      dates: formattedDatesStr || 'Dates to be announced',
       startDate: eventStartDate || null,
       endDate: eventEndDate || null,
       location: eventLocation,
       status: finalStatus,
+      registrationState,
       description: eventDesc,
       longDescription: eventLongDesc || eventDesc,
       image: eventImage,
@@ -1105,6 +1122,7 @@ export default function EventFormModal({
         description: regDesc,
         buttonText: regBtnText,
         buttonLink: regBtnLink,
+        actionPhases,
         highlights: regHighlights.split(',').map(h => h.trim()).filter(h => h.length > 0),
         paymentMsgChoice: paymentMsgChoice,
         paymentMarkdown: paymentMarkdown,
@@ -1242,14 +1260,15 @@ export default function EventFormModal({
               <input required type="text" placeholder="e.g. IIIT Delhi, Okhla Phase III" className="w-full p-3 border border-ink bg-paper focus:bg-white focus:outline-none font-bold" value={eventLocation} onChange={e => setEventLocation(e.target.value)} />
             </div>
             <div>
-              <label className="block text-[9px] font-black uppercase tracking-widest opacity-50 mb-1.5">Gate Status Mode</label>
+              <label className="block text-[9px] font-black uppercase tracking-widest opacity-50 mb-1.5">Activity status</label>
               <select className="w-full p-3 border border-ink bg-paper focus:bg-white focus:outline-none font-bold" value={eventStatus} onChange={e => setEventStatus(e.target.value)}>
-                <option value="Upcoming">Upcoming / Registrations Active</option>
+                <option value="Upcoming">Upcoming</option>
                 <option value="Ongoing">Ongoing / Sessions Live</option>
                 <option value="Completed">Completed / Concluded</option>
                 <option value="Archived">Archived / Materials Cached</option>
                 <option value="Draft">Draft / Work in Progress</option>
               </select>
+              <label className="block text-xs font-bold mt-3">Registration availability<select className="block w-full border p-3 mt-1" value={registrationState} onChange={e=>setRegistrationState(e.target.value)}><option value="closed">Closed</option><option value="open">Open</option></select></label>
             </div>
             <div>
               <label className="block text-[9px] font-black uppercase tracking-widest opacity-50 mb-1.5">Aesthetic Cover Image Ref</label>
@@ -1520,6 +1539,7 @@ export default function EventFormModal({
                 )}
               </div>
             </div>
+            <ParticipationPhaseEditor value={actionPhases} onChange={setActionPhases}/>
             <div className="grid sm:grid-cols-2 gap-6 animate-fade-in text-xs">
               <div>
                 <label className="block text-[9px] font-black uppercase tracking-widest opacity-50 mb-1.5">Spot Registration Title</label>
@@ -1990,6 +2010,7 @@ export default function EventFormModal({
           {activeEditorTab === 'dossiers' && (
           <div className="border-b border-ink/10 pb-8 space-y-6 animate-fade-in">
             <h3 className="font-serif text-lg font-black font-bold">Interactive Event Dossier Chapters</h3>
+            {(isCourseProp||eventToEdit?.isCourse||isResidentialCourse({type:eventType})||newPageType==='course_overview')&&<CourseOverviewEditor record={{...eventToEdit,type:eventType,subPages:customPages}} onChange={setCustomPages}/>}
 
             {/* INTERACTIVE MOVABLE & EDITABLE SUB-TABS BAR */}
             <div className="space-y-2 select-none mb-4">
@@ -2106,6 +2127,7 @@ export default function EventFormModal({
                   <label className="block text-[8px] font-black uppercase mb-1">Tab Segment Architecture</label>
                   <select className="w-full p-2 border border-ink bg-white font-bold" value={newPageType} onChange={e => setNewPageType(e.target.value)}>
                     <option value="markdown">Text (Markdown with Buttons & Helper)</option>
+                    <option value="course_overview">Course overview · module titles and details</option>
                     <option value="dates">Deadlines</option>
                     <option value="schedule">List (Schedule with Dates & Details)</option>
                     <option value="registration">Registration Fee & Instruction Guidelines</option>
@@ -2148,6 +2170,7 @@ export default function EventFormModal({
               {newPageType === 'dates' && (
                 <div className="space-y-3 p-4 border border-ink bg-white animate-fade-in">
                   <div className="font-bold text-[10px] text-brand-orange uppercase font-sans">Manage Deadlines List</div>
+                  <p className="text-xs">Use “Schedule buttons” on a deadline to create its dated action phase in Admissions &amp; Fees. Enter calendar dates there to control when buttons appear.</p>
                   <div className="grid grid-cols-3 gap-2">
                     <div>
                       <label className="block text-[8px] font-black uppercase mb-1">Deadline Name</label>
@@ -2195,6 +2218,10 @@ export default function EventFormModal({
                         <div key={index} className="py-2 flex justify-between items-center text-[11px] bg-white p-2 border border-ink/10 mb-1 rounded">
                           <span>{d.label}: <strong>{d.date}</strong> {d.footnote ? `(${d.footnote})` : ''} {d.highlighted ? <span className="text-red-650 ml-1">🚨 [High]</span> : ''}</span>
                           <div className="flex gap-2 font-mono text-[9px] font-bold">
+                            <button type="button" aria-label={`Schedule buttons for ${d.label}`} onClick={()=>{
+                              setActionPhases(prev=>[...prev,{id:crypto.randomUUID(),title:d.label||'',endDate:/^\d{4}-\d{2}-\d{2}$/.test(d.date||'')?d.date:'',buttons:[{id:crypto.randomUUID(),label:'',kind:'submission',href:regBtnLink||'',audience:'unregistered'}]}]);
+                              setActiveEditorTab('admissions');
+                            }} className="text-brand-blue hover:underline">Schedule buttons</button>
                             <button type="button" onClick={() => {
                               setEditingDateIdx(index);
                               setDtLabel(d.label);

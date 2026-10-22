@@ -1,0 +1,25 @@
+import OrganisationLinks from './layout/OrganisationLinks';
+import { affiliations, peopleAffiliation } from './peopleAffiliation';
+import type { ReactNode } from 'react';
+import { getEffectiveStatus } from '../lib/courseStatus';
+import { Link } from 'react-router-dom';
+import { RecordData, coursePath, dateLabel, projectStatus } from './data';
+import { Arrow, Badge, Empty, Image, SmartLink } from './ui';
+export function ProjectCards({items,actions,rows=false}:{items:RecordData[];actions?:(record:RecordData)=>ReactNode;rows?:boolean}){return items.length?<div className={rows?"project-directory":"work-grid"}>{items.map(p=><article className="work-card" key={p.slug}><Link className="work-art sage" to={`/projects/${p.slug}`}><Image src={p.image} alt={p.title}/><span>{p.tag}</span></Link><div className="work-copy"><Badge status={p.deleted?'Trash':projectStatus(p)}/><h3><Link to={`/projects/${p.slug}`}>{p.title} <Arrow/></Link></h3><p>{p.description}</p><div className="card-bottom">{p.outputUrl&&<SmartLink to={/^https?:\/\//i.test(p.outputUrl)?p.outputUrl:`https://${p.outputUrl}`}>{p.outputLabel||'Outputs & repository'} ↗</SmartLink>}{p.updatedAt&&<small>Updated {dateLabel(p.updatedAt)}</small>}<Link to={`/projects/${p.slug}`}>Follow the work <Arrow/></Link></div></div>{actions&&<div className="record-actions">{actions(p)}</div>}</article>)}</div>:<Empty/>;}
+export function CourseCards({items,actions,rows=false}:{items:RecordData[];actions?:(record:RecordData)=>ReactNode;rows?:boolean}){return items.length?<div className={rows?"course-directory":"course-grid"}>{items.map(c=><article className="course-card" key={c.slug}><Link to={coursePath(c)} className={`course-visual ${/residential/i.test(c.type)?'ochre':'sage'}`}><span>{c.type}</span>{c.image?<Image src={c.image} alt={c.title}/>:<b>Listen.<br/>Practise.<br/>Reflect.</b>}<span>{c.duration}</span></Link><div className="course-copy"><Badge status={getEffectiveStatus(c)}/><h3><Link to={coursePath(c)}>{c.title} <Arrow/></Link></h3><p>{c.description}</p><div className="card-bottom"><small>{c.dates||[dateLabel(c.startDate),dateLabel(c.endDate)].filter(Boolean).join(' – ')}</small><Link to={coursePath(c)}>Explore this course <Arrow/></Link></div></div>{actions&&<div className="record-actions">{actions(c)}</div>}</article>)}</div>:<Empty>No programmes match this view. Try another format or status.</Empty>;}
+export function EventRows({items,actions}:{items:RecordData[];actions?:(record:RecordData)=>ReactNode}){
+ return items.length?<div className="event-list">{items.map(e=>{
+  const href=`/events/${e.slug}${e.isCourse?'?isCourse=true&from=events':''}`;
+  return <article className="event-entry event-photo-entry" key={e.slug}>
+   <Link className="event-visual" to={href}><Image src={e.image} alt={e.title}/></Link>
+   <div className="event-copy"><p className="eyebrow">{[e.type,e.location].filter(Boolean).join(' / ')}</p>
+    <div className="event-date"><time className="event-date-range">{e.startDate?[dateLabel(e.startDate),e.endDate&&dateLabel(e.endDate)!==dateLabel(e.startDate)?dateLabel(e.endDate):null].filter(Boolean).join(' – '):e.dates||'Dates to be announced'}</time></div>
+    <h3><Link to={href}>{e.title} <Arrow/></Link></h3><p>{e.description}</p>
+    <div className="event-edge"><Badge status={e.deleted?'Trash':getEffectiveStatus(e)}/><Link to={href}>{['Completed','Archived'].includes(getEffectiveStatus(e))?'Read the record':'Programme details'} →</Link></div>
+   </div>{actions&&<div className="record-actions">{actions(e)}</div>}
+  </article>;
+ })}</div>:<Empty>No programmes match this status.</Empty>;
+}
+export function ResourceCards({items}:{items:RecordData[]}){return items.length?<div className="resource-grid">{items.map(r=><Link className="library-card" key={r.slug} to={`/resources/${r.slug}`}><span className="eyebrow">{r.categories?.length?r.categories.join(" · "):r.kind} <Arrow/></span><h3>{r.title}</h3><p>{r.description}</p><small>{r.authors||dateLabel(r.publishedAt)||'Read / Adapt / Reuse'}</small></Link>)}</div>:<Empty>Resources will appear here as they are published.</Empty>;}
+export function PeopleCards({items,actions}:{items:RecordData[];actions?:(record:RecordData)=>ReactNode}){return items.length?<div className="people-grid">{items.map(p=><article className="person-card" key={p.slug}><Link className="person-photo" to={`/people/${p.slug}`}><Image src={p.image} alt={p.fullName||p.name}/></Link><span className="person-affiliation">{affiliations[peopleAffiliation(p)]}</span><p className="eyebrow">{p.role}</p><h2><Link to={`/people/${p.slug}`}>{p.fullName||p.name}</Link></h2><p>{p.bio?.replace(/<[^>]*>/g,'').slice(0,180)}{p.bio?.length>180?'…':''}</p><Link className="text-action" to={`/people/${p.slug}`}>Research & connected work <Arrow/></Link>{actions&&<div className="record-actions">{actions(p)}</div>}</article>)}</div>:<Empty/>;}
+export function PartnerLinks({items,title}:{items?:RecordData[];title:string}){return items?.length?<section className="detail-section"><h2>{title}</h2><OrganisationLinks items={items} showNames/></section>:null;}

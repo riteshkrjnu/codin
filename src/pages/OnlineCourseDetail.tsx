@@ -1,3 +1,17 @@
+import ConnectedWriting from '../features/writing/ConnectedWriting';
+import { eventParticipationActions } from '../site/eventParticipation';
+import { registrationAvailability } from '../lib/participation';
+import ParticipationActions from '../site/layout/ParticipationActions';
+import { learningHref } from '../site/layout/learningAccess';
+import { useLearningAccess } from '../site/useLearningAccess';
+import { courseOverviewPages, isResidentialCourse } from '../site/coursePresentation';
+import { useSiteData } from '../site/data';
+import RecordContent from '../site/layout/RecordContent';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance from '../site/layout/RecordGlance';
+import { useLifecycleNow } from '../lib/lifecycleClock';
+import RecordHeading from '../site/layout/RecordHeading';
+import LearningNotes from '../site/LearningNotes';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -55,10 +69,15 @@ import { AiSidekickPanel } from "../components/assignments/AiSidekickPanel";
 import { Assignment } from "../types/assignments";
 
 export default function OnlineCourseDetail() {
+  const now=useLifecycleNow();
   const { slug } = useParams();
   const loc = useLocation();
   const navigate = useNavigate();
   const searchParams = new URLSearchParams(loc.search);
+  const {data:siteData}=useSiteData();
+  const origin=searchParams.get("from");
+  const eventContext=searchParams.get("context")==="event"||searchParams.get("context")!=="course"&&siteData.events.some(r=>!r.isCourse&&r.slug===slug);
+  const contextQuery=`${eventContext?"&context=event":"&context=course"}${origin?`&from=${encodeURIComponent(origin)}`:""}`;
   const simulateParam = searchParams.get("simulate") === "true";
   const simulateUnenrolledParam = searchParams.get("simulate") === "unenrolled";
 
@@ -68,6 +87,7 @@ export default function OnlineCourseDetail() {
 
   const [isEnrolled, setIsEnrolled] = useState(false);
   const [myStatus, setMyStatus] = useState<any>(null);
+  const learningAccess=useLearningAccess(slug,`${isEnrolled}:${myStatus?.participant?.admissionStatus||''}:${myStatus?.participant?.paymentStatus||''}`);
   const [payingFee, setPayingFee] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [activeVideo, setActiveVideo] = useState(
@@ -157,7 +177,7 @@ export default function OnlineCourseDetail() {
   const [layoutMode, setLayoutMode] = useState<
     "split" | "fullscreen" | "minimized"
   >("split");
-  const [leftWidthPercent, setLeftWidthPercent] = useState<number>(65);
+  const [leftWidthPercent, setLeftWidthPercent] = useState<number>(75);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [prevLayoutMode, setPrevLayoutMode] = useState<
@@ -188,7 +208,7 @@ export default function OnlineCourseDetail() {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
       const offset = e.clientX - rect.left;
-      const percent = Math.min(80, Math.max(25, (offset / rect.width) * 100));
+      const percent = Math.min(80, Math.max(25, 100 - (offset / rect.width) * 100));
       setLeftWidthPercent(Math.round(percent));
     };
 
@@ -200,7 +220,7 @@ export default function OnlineCourseDetail() {
       if (!containerRef.current || e.touches.length === 0) return;
       const rect = containerRef.current.getBoundingClientRect();
       const offset = e.touches[0].clientX - rect.left;
-      const percent = Math.min(80, Math.max(25, (offset / rect.width) * 100));
+      const percent = Math.min(80, Math.max(25, 100 - (offset / rect.width) * 100));
       setLeftWidthPercent(Math.round(percent));
     };
 
@@ -701,6 +721,7 @@ export default function OnlineCourseDetail() {
           Authorization: `Bearer ${user?.token}`,
         },
         body: JSON.stringify({
+          __v: course.__v,
           modulesList: updatedList,
           modules: updatedList.length,
           outline: updatedList.map((m) => m.title),
@@ -1465,6 +1486,7 @@ export default function OnlineCourseDetail() {
           Authorization: `Bearer ${user?.token}`,
         },
         body: JSON.stringify({
+          __v: course.__v,
           title: editTitle,
           description: editDesc,
           youtubeDesignatedChannel: editYoutubeChannel,
@@ -1474,7 +1496,7 @@ export default function OnlineCourseDetail() {
       if (data.success) {
         setCourse(data.course);
         setIsEditing(false);
-      }
+      } else { setMatFormError(data.error || "Save failed"); }
     } catch (e) {
       console.error(e);
     }
@@ -1525,12 +1547,18 @@ export default function OnlineCourseDetail() {
       }
     };
     fetchCourseData();
-  }, [slug]);
+  }, [slug, user?.token, isEnrolled]);
 
   useEffect(() => {
     if (user?.token && course && allCourses.length > 0) {
       checkEnrollment(user.token);
+    } else if (!user) {
+      setIsEnrolled(false);
+      setMyStatus(null);
     }
+    const refresh=()=>{if(user?.token&&course&&document.visibilityState!=='hidden')checkEnrollment(user.token);};
+    window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
+    return ()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
   }, [slug, user, course, allCourses]);
 
   const checkEnrollment = async (uid: string) => {
@@ -1633,12 +1661,12 @@ export default function OnlineCourseDetail() {
       </div>
     );
 
-  const isOwner = user && course.createdBy === user.token;
+  const isOwner = user && course.createdBy === user.id;
   const isAdmin = user && (user.role === "admin" || user.role === "superadmin");
   const userInstructorData = course.instructors?.find(
-    (i: any) => i.user === user?.token,
+    (i: any) => i.user === user?.id,
   );
-  const userTAData = course.tas?.find((t: any) => t.user === user?.token);
+  const userTAData = course.tas?.find((t: any) => t.user === user?.id);
 
   const isInstructorOrTA =
     isOwner || isAdmin || !!userInstructorData || !!userTAData;
@@ -1672,9 +1700,8 @@ export default function OnlineCourseDetail() {
   };
 
   // Instructors and admins see the course even if they are not enrolled.
-  const hasAccess =
-    (isEnrolled && !(isInstructorOrTA && simulateUnenrolledParam)) ||
-    (!!isInstructorOrTA && simulateParam);
+  const hasAccess = learningAccess.allowed && !(isInstructorOrTA && simulateUnenrolledParam);
+  if(searchParams.get('learn')==='1'&&!learningAccess.checked)return <p className="loading-state" role="status">Opening learning materials…</p>;
 
   // Mock sessions for the demonstration
   const modules = Array.from({ length: Math.max(course.modules, 1) }).map(
@@ -1704,6 +1731,8 @@ export default function OnlineCourseDetail() {
   );
 
   const handleEnrollClick = async () => {
+    const gate=registrationAvailability(course,myStatus?.accepted?myStatus.participant:undefined,Date.now());
+    if(!gate.allowed){alert(gate.reason);return;}
     if (!user) {
       setShowModal(true);
       return;
@@ -1742,6 +1771,8 @@ export default function OnlineCourseDetail() {
   };
 
   const handlePayFee = async () => {
+    const gate=registrationAvailability(course,myStatus?.participant,Date.now());
+    if(!gate.allowed){alert(gate.reason);return;}
     if (!user?.token) return;
     try {
       setPayingFee(true);
@@ -1768,15 +1799,396 @@ export default function OnlineCourseDetail() {
     }
   };
 
-  return (
+  const publicOverview=courseOverviewPages(course).find(s=>s.type==='course_overview');
+  const courseSections = [{slug:'overview',title:publicOverview?.title||'Course overview',type:'course_overview',content:publicOverview?.content,preview:course.description},{slug:'registration',title:'Registration',type:'registration'}, ...(course.subPages || []).filter((s: any) => s.type !== 'registration' && s.type !== 'course_overview').map((s: any) => ({...s, slug: s.slug === 'overview' ? 'course-overview' : s.slug}))];
+const registrationWindow=registrationAvailability(course,myStatus?.accepted?myStatus.participant:undefined,now);
+const participationActions=eventParticipationActions({record:course,status:getEffectiveStatus(course,now),registration:myStatus,materialsAccess:hasAccess,now,online:true,materialsLabel:eventContext?'Access Materials':'Open LMS'});
+const renderParticipationActions=(inline=false)=>{
+  const query=new URLSearchParams(searchParams);query.set('section','registration');if(query.has('tab'))query.set('tab','registration');
+  return <ParticipationActions actions={participationActions} registrationHref={`?${query}`} materialsHref={learningHref(course.slug,eventContext?'event':'course',origin||undefined)} onRegister={inline&&!myStatus?.accepted?handleEnrollClick:undefined} enrolling={loading}/>;
+};
+
+const renderCourseSection = (section: any) => section.slug==='overview'&&!isEditing ? <RecordContent section={section}/> : section.slug !== 'overview' && section.slug !== 'registration' ? <RecordContent section={section}/> : section.slug === 'overview' ? (<div className="record-detail-main">
+              <div className="flex items-center gap-4 mb-8">
+                {course.hasMicrocert && (
+                  <div className="font-mono text-[10px] font-black uppercase tracking-widest bg-brand-acid border border-ink px-3 py-1 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+                    MICRO-CERTIFICATION
+                  </div>
+                )}
+                <div className="font-mono text-[10px] font-black uppercase tracking-widest opacity-40">
+                  {course.credits} Credits
+                </div>
+              </div>
+
+              {isEditing &&
+              permissions.edit_course_details &&
+              !simulateUnenrolledParam ? (
+                <input
+                  type="text"
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full text-6xl md:text-8xl font-serif font-black italic bg-transparent border-b-2 border-ink focus:outline-none mb-8"
+                />
+              ) : (
+                <div className="section-actions">
+
+
+                  {permissions.edit_course_details &&
+                    !simulateUnenrolledParam && (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="ml-4 align-middle text-sm font-mono font-bold uppercase tracking-widest text-brand-blue hover:underline  transition-opacity"
+                      >
+                        Edit
+                      </button>
+                    )}
+                </div>
+              )}
+
+              {isEditing &&
+              permissions.edit_course_details &&
+              !simulateUnenrolledParam ? (
+                <div>
+                  <div className="mb-6">
+                    <label className="block text-[8px] font-mono font-bold uppercase tracking-wider mb-1 text-ink/60">
+                      Course Description
+                    </label>
+                    <textarea
+                      value={editDesc}
+                      onChange={(e) => setEditDesc(e.target.value)}
+                      rows={3}
+                      className="w-full font-serif text-2xl font-light italic leading-tight text-ink/80 bg-transparent border-b-2 border-ink focus:outline-none mb-6"
+                    />
+                  </div>
+                  <div className="mb-12">
+                    <label className="block text-[8px] font-mono font-bold uppercase tracking-wider mb-1 text-ink/60">
+                      Designated YouTube Channel (URL or Handle)
+                    </label>
+                    <input
+                      type="text"
+                      value={editYoutubeChannel}
+                      onChange={(e) => setEditYoutubeChannel(e.target.value)}
+                      placeholder="e.g. https://www.youtube.com/@indicacademy"
+                      className="w-full p-2 border border-ink bg-white font-mono text-[10px] focus:outline-none"
+                    />
+                    <p className="text-[7.5px] font-sans opacity-70 mt-1 uppercase tracking-wider font-bold text-brand-orange">
+                      🎯 Instructors must log into the Google Account associated
+                      with this channel to schedule broadcasts automatically.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="font-serif text-2xl font-light italic leading-tight text-ink/80 mb-12 group">
+                  {course.description}
+                  {permissions.edit_course_details &&
+                    !simulateUnenrolledParam && (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="ml-4 align-middle text-sm font-mono font-bold uppercase tracking-widest text-brand-blue hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        Edit
+                      </button>
+                    )}
+                </p>
+              )}
+
+              {permissions.edit_course_details &&
+                isEditing &&
+                !simulateUnenrolledParam && (
+                  <div className="mb-12 p-4 border border-brand-orange bg-brand-orange/5 space-y-4">
+                    <button
+                      disabled={updateLoading}
+                      onClick={handleUpdateCourse}
+                      className="h-10 px-6 bg-brand-acid text-ink font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-brand-acid/80 shadow-[4px_4px_0px_rgba(0,0,0,1)]"
+                    >
+                      {updateLoading ? "Saving..." : "Save Changes"}
+                    </button>
+                  </div>
+                )}
+
+              <div className="flex flex-wrap gap-8 mb-16 font-mono text-[10px] font-black uppercase tracking-widest text-ink/40">
+                {course.startDate && (
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3 h-3" /> Starts:{" "}
+                    {new Date(course.startDate).toLocaleDateString()}
+                  </div>
+                )}
+                {course.endDate && (
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3 h-3" /> Ends:{" "}
+                    {new Date(course.endDate).toLocaleDateString()}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Clock className="w-3 h-3" /> {course.duration}
+                </div>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-3 h-3" /> {course.modules} Modules
+                </div>
+                <div className="flex items-center gap-2 text-brand-blue">
+                  <CheckCircle className="w-3 h-3" /> Industry Standard
+                </div>
+              </div>
+
+              <div className="mb-12">
+                <h3 className="font-mono text-[10px] font-black uppercase tracking-[0.3em] mb-8 opacity-40">
+                  Course Modules Content
+                </h3>
+                <div className="space-y-4">
+                  {modulesList.map((mod, midx) => (
+                    <div
+                      key={midx}
+                      className="p-6 border border-ink flex items-start gap-6 bg-white"
+                    >
+                      <div className="font-mono text-3xl font-black opacity-20">
+                        0{midx + 1}
+                      </div>
+                      <div>
+                        <h4 className="font-serif font-black italic mb-2 text-xl">
+                          {mod.title}
+                        </h4>
+                        <p className="font-mono text-[10px] font-bold uppercase tracking-widest opacity-60">
+                          Contains {(mod.materials || []).length} interactive
+                          study resource
+                          {(mod.materials || []).length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>) : (<><RecordContent section={course.subPages?.find((s:any)=>s.type==='registration')||{slug:'fees',title:'Registration',type:'registration',content:course.registrationCard}}/><div className="lg:col-span-4">
+              <div className="sticky top-32 space-y-8">
+                {myStatus?.accepted && hasAccess ? null : myStatus?.accepted ? (
+                  myStatus.participant?.paymentStatus === "Confirmed" ? (
+                    <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
+                      <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500 text-ink font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
+                          <Clock className="w-4 h-4 text-ink" strokeWidth={3} />{" "}
+                          ROSTER: REGISTRATION RECEIVED
+                        </div>
+                        <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white font-bold">
+                          Payment Received
+                        </h3>
+                        <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
+                          NAME:{" "}
+                          <span className="font-semibold text-brand-acid">
+                            {myStatus.participant.name}
+                          </span>{" "}
+                          <br />
+                          EMAIL:{" "}
+                          <span className="font-semibold text-brand-acid">
+                            {myStatus.participant.email}
+                          </span>
+                        </p>
+
+                        <div className="p-4 border border-brand-acid bg-brand-acid/10 text-brand-acid flex items-center gap-3 mb-6 font-bold">
+                          <Check
+                            className="w-5 h-5 text-brand-acid shrink-0"
+                            strokeWidth={3}
+                          />
+                          <div className="font-mono text-[10px] font-black uppercase tracking-wide">
+                            Fee Payment Received!
+                          </div>
+                        </div>
+
+                        <div className="p-5 border border-white/20 bg-white/5 space-y-2 rounded-none">
+                          <span className="block text-[10px] font-black uppercase text-brand-orange font-mono tracking-wider">
+                            Admission Review Status
+                          </span>
+                          <p className="text-xs text-paper/85 leading-relaxed font-sans font-medium">
+                            Please check back in a few days for accessing course
+                            materials. Your registration status has been
+                            successfully lodged on the roster, and academic
+                            delegates are verifying final admissions.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
+                      <div>
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange text-white font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
+                          <AlertCircle className="w-4 h-4" /> ROSTER: PAYMENT
+                          AWAITING
+                        </div>
+                        <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white font-bold">
+                          Fee Settlement
+                        </h3>
+                        <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
+                          NAME:{" "}
+                          <span className="font-semibold text-brand-acid">
+                            {myStatus.participant.name}
+                          </span>{" "}
+                          <br />
+                          EMAIL:{" "}
+                          <span className="font-semibold text-brand-acid">
+                            {myStatus.participant.email}
+                          </span>
+                        </p>
+
+                        <div className="space-y-6">
+                          <div className="p-4 border border-white/20 bg-white/5 flex flex-col gap-2">
+                            <div className="flex justify-between items-center text-xs font-mono font-bold">
+                              <span className="opacity-60">AMOUNT DUE:</span>
+                              <span className="font-bold text-white uppercase">
+                                Rs. {myStatus.participant.fee}
+                              </span>
+                            </div>
+                            {myStatus.participant.paymentDeadline && (
+                              <div className="flex justify-between items-center text-[10px] font-mono text-brand-orange font-bold">
+                                <span>THRESHOLD DEADLINE:</span>
+                                <span className="font-black bg-brand-orange/20 px-2 py-0.5 font-bold">
+                                  {myStatus.participant.paymentDeadline}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {!registrationWindow.allowed ? <p role="status">{registrationWindow.reason}</p> : course.registrationCard?.paymentMsgChoice ===
+                            "link" &&
+                          course.registrationCard?.paymentGatewayLink ? (
+                            <div className="space-y-4">
+                              <p className="text-xs text-paper/85 leading-relaxed font-sans">
+                                Click below to open the external payment
+                                interface.
+                              </p>
+                              <a
+                                href={
+                                  course.registrationCard.paymentGatewayLink
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-[10px] hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink flex items-center justify-center hover:no-underline text-center"
+                              >
+                                Proceed to Payment Gateway ↗
+                              </a>
+                              <button
+                                type="button"
+                                onClick={handlePayFee}
+                                disabled={payingFee}
+                                className="w-full h-11 border border-brand-acid/40 text-brand-acid/70 hover:border-brand-acid hover:text-brand-acid font-mono text-[9px] uppercase font-bold tracking-wider transition-colors bg-brand-acid/5 cursor-pointer font-bold"
+                              >
+                                {payingFee
+                                  ? "Verifying..."
+                                  : "Simulate Sandbox Payment Receipt"}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {course.registrationCard?.paymentMarkdown ? (
+                                <div className="p-4 border border-white/20 bg-white/5 text-xs text-white/90 font-sans leading-relaxed overflow-y-auto max-h-[220px]">
+                                  <span className="block text-[8px] font-mono font-black uppercase tracking-widest text-brand-acid mb-2 font-bold">
+                                    Instructions
+                                  </span>
+                                  <div
+                                    dangerouslySetInnerHTML={{
+                                      __html: renderMarkdown(
+                                        course.registrationCard.paymentMarkdown,
+                                        true,
+                                      ),
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <p className="text-xs text-paper/84 leading-relaxed font-sans">
+                                  Transfer Rs. {myStatus.participant.fee} to the
+                                  academy account, then click the manual
+                                  simulation button below to acknowledge
+                                  settlement.
+                                </p>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={handlePayFee}
+                                disabled={payingFee}
+                                className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink font-bold"
+                              >
+                                {payingFee
+                                  ? "Processing payment..."
+                                  : "Acknowledge Payment & Request Spot"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                ) : (
+                  <div className="bg-ink text-paper p-10 brutalist-card text-left border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)]">
+                    <h3 className="text-2xl font-serif font-black italic mb-4 font-bold uppercase tracking-tight text-white leading-none">
+                      {course.registrationCard?.title || "Secure Your Spot"}
+                    </h3>
+                    <p className="text-xs opacity-65 mb-6 leading-relaxed font-mono uppercase tracking-wide">
+                      {course.registrationCard?.description ||
+                        "Enroll in this comprehensive syllabus to start, unlock learning pathways, exercises, and study archives."}
+                    </p>
+
+                    <div className="text-3xl font-serif font-black italic mb-6 text-white leading-none">
+                      {course.fee > 0 ? (
+                        activeDiscount ? (
+                          <>
+                            <span className="line-through text-white/40 text-xl mr-4 font-bold font-sans">
+                              ₹{course.fee}
+                            </span>
+                            <span className="text-ink bg-brand-acid px-2 py-0.5 font-sans font-bold">
+                              ₹{course.fee - activeDiscount.amount}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="font-sans font-bold">
+                            ₹{course.fee}
+                          </span>
+                        )
+                      ) : (
+                        "Free"
+                      )}
+                    </div>
+
+                    {activeDiscount && (
+                      <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-brand-orange mb-8 bg-brand-orange/10 p-2 border border-brand-orange rounded-none">
+                        {activeDiscount.msg}
+                      </div>
+                    )}
+
+                    {renderParticipationActions(true)}
+
+                    <div className="mt-8 pt-8 border-t border-white/10">
+                      <h5 className="font-mono text-[9px] font-black uppercase tracking-widest opacity-40 mb-4 text-white">
+                        Includes
+                      </h5>
+                      <div className="flex flex-col gap-4">
+                        {(
+                          course.registrationCard?.highlights || [
+                            "Lifetime Access",
+                            "Live Lecture Recordings",
+                            "W2M Certified Badge",
+                          ]
+                        ).map((h: string) => (
+                          <div
+                            key={h}
+                            className="flex items-center gap-2.5 text-[9px] font-mono font-bold uppercase tracking-widest text-white/85 flex"
+                          >
+                            <div className="w-1.5 h-1.5 bg-brand-acid shrink-0" />
+                            <span>{h}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div></>);
+return (
     <div className="pt-32 pb-24 grid-structure min-h-screen">
       <div className="max-w-[1600px] mx-auto px-6 lg:px-12">
         <Link
-          to="/academy/online"
+          to={eventContext?`/events/${slug}${origin?`?from=${encodeURIComponent(origin)}`:""}`:isResidentialCourse(course)?`/events/${slug}?isCourse=true&from=${origin||"academy"}`:"/academy/online"}
           className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] mb-12 hover:text-brand-blue transition-colors group"
         >
           <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Online Academy
+          {eventContext?"Back to event":isResidentialCourse(course)?"Back to course":"Online Academy"}
         </Link>
         {isInstructorOrTA && !hasAccess && (
           <div className="mb-8 p-4 border border-brand-orange bg-brand-orange/10 text-brand-orange font-mono text-xs font-bold uppercase tracking-widest flex items-center gap-4">
@@ -1784,7 +2196,7 @@ export default function OnlineCourseDetail() {
             Admin / Instructor Preview Mode
             <button
               onClick={() =>
-                navigate(`/academy/online/${course.slug}?simulate=true`)
+                navigate(`/academy/online/${course.slug}?simulate=true${contextQuery}`)
               }
               className="px-4 py-2 bg-brand-orange text-paper hover:bg-brand-orange/80 transition-colors ml-auto"
             >
@@ -1793,7 +2205,7 @@ export default function OnlineCourseDetail() {
           </div>
         )}
 
-        {isInstructorOrTA && hasAccess && (
+        {isInstructorOrTA && hasAccess && simulateParam && (
           <div className="mb-8 p-4 border-2 border-brand-orange bg-brand-orange/5 text-ink font-mono text-xs flex flex-wrap items-center justify-between gap-4 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
             <div className="flex items-center gap-2">
               <Shield className="w-5 h-5 text-brand-orange animate-pulse" />
@@ -1804,14 +2216,14 @@ export default function OnlineCourseDetail() {
             <div className="flex items-center gap-3">
               <button
                 onClick={() =>
-                  navigate(`/academy/online/${course.slug}?simulate=unenrolled`)
+                  navigate(`/academy/online/${course.slug}?simulate=unenrolled${contextQuery}`)
                 }
                 className="px-4 py-2 border-2 border-brand-orange text-brand-orange hover:bg-brand-orange hover:text-paper font-bold uppercase text-[10px] tracking-wider transition-colors bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5"
               >
                 Simulate Enrollment Page (Public)
               </button>
               <button
-                onClick={() => navigate(`/academy/online/${course.slug}`)}
+                onClick={() => navigate(`/academy/online/${course.slug}?${contextQuery.slice(1)}`)}
                 className="px-4 py-2 bg-ink text-paper hover:bg-opacity-80 font-bold uppercase text-[10px] tracking-wider transition-colors"
               >
                 Exit Simulation Mode
@@ -1820,7 +2232,7 @@ export default function OnlineCourseDetail() {
           </div>
         )}
 
-        {hasAccess ? (
+        {hasAccess && (searchParams.get("learn") === "1" || simulateParam) ? (
           // Enrolled MOOC UI
           <div className="space-y-6">
             {/* Minimal Compact Premium Presets Bar */}
@@ -1896,20 +2308,21 @@ export default function OnlineCourseDetail() {
                   className="flex items-center text-[8px] font-mono bg-brand-acid text-ink px-1.5 py-0.5 rounded-xs ml-1 font-semibold select-none shadow-[1px_1px_0px_rgba(0,0,0,1)] border border-ink/40 cursor-help"
                   title="Keyboard Shortcuts: Alt+1 = Split View, Alt+2 = Full Video, Alt+3 = Focus List. Alt+P / ← = Prev, Alt+N / → = Next."
                 >
-                  ⌨️ Hotkeys Active
+                  Keyboard shortcuts
                 </div>
               </div>
             </div>
 
             <div
               ref={containerRef}
-              className={`flex flex-col lg:flex-row w-full relative tracking-normal ${
+              data-layout={layoutMode}
+              className={`learning-split flex flex-col lg:flex-row w-full relative tracking-normal ${
                 isLargeScreen && layoutMode === "split" ? "gap-0" : "gap-12"
               } items-start`}
             >
               {/* Left Panel - Viewer or Large Content Composer */}
               <div
-                className="w-full flex-col space-y-8"
+                className="learning-viewer w-full flex-col space-y-8"
                 style={{
                   display: layoutMode === "minimized" ? "none" : "flex",
                   width: isLargeScreen
@@ -1925,7 +2338,7 @@ export default function OnlineCourseDetail() {
                 }}
               >
                 {/* Visual Workspace Tab Mode Selector */}
-                <div className="flex border-2 border-stone-100 bg-stone-100 p-1 font-mono text-xs font-black shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+                <div className="learning-mode-tabs flex border-2 border-stone-100 bg-stone-100 p-1 font-mono text-xs font-black">
                   <button
                     onClick={() => {
                       setWorkMode("materials");
@@ -1937,7 +2350,7 @@ export default function OnlineCourseDetail() {
                         : "text-stone-700 hover:bg-stone-200"
                     }`}
                   >
-                    📖 STUDY COURSEWARE
+                    Materials
                   </button>
                   <button
                     onClick={() => {
@@ -1950,7 +2363,7 @@ export default function OnlineCourseDetail() {
                         : "text-stone-700 hover:bg-stone-200"
                     }`}
                   >
-                    📝 ASSIGNMENTS & TASKS
+                    Assignments
                   </button>
                   <button
                     onClick={() => {
@@ -2747,15 +3160,15 @@ export default function OnlineCourseDetail() {
                                         <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
                                           {browsedEvents.map((ev) => {
                                             const isSelected = selectedBrowseEventIds.includes(ev.id);
-                                            const formattedTime = ev.start 
-                                              ? new Date(ev.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                                            const formattedTime = ev.start
+                                              ? new Date(ev.start).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                               : "All day";
                                             return (
                                               <label
                                                 key={ev.id}
                                                 className={`flex items-start gap-2.5 p-2.5 border-2 transition-all cursor-pointer bg-white ${
-                                                  isSelected 
-                                                    ? "border-ink bg-brand-orange/5 shadow-[2px_2px_0px_rgba(0,0,0,1)]" 
+                                                  isSelected
+                                                    ? "border-ink bg-brand-orange/5 shadow-[2px_2px_0px_rgba(0,0,0,1)]"
                                                     : "border-ink/10 hover:border-ink/30"
                                                 }`}
                                               >
@@ -2812,7 +3225,7 @@ export default function OnlineCourseDetail() {
                                               <div className="absolute top-2 right-2 text-[8px] font-bold font-mono text-ink/30">
                                                 STAGED #{sIdx + 1}
                                               </div>
-                                              
+
                                               {/* Title input */}
                                               <div>
                                                 <label className="block text-[8px] font-black uppercase text-ink/60 mb-0.5">
@@ -3691,12 +4104,12 @@ export default function OnlineCourseDetail() {
                   ) : (
                     <div className="flex-1 p-12 text-center text-ink/40 font-mono text-sm leading-relaxed flex flex-col items-center justify-center min-h-[350px]">
                       <BookOpen className="w-12 h-12 opacity-30 mb-4 text-brand-blue" />
-                      Click any session or course material topic in the
-                      right-hand panel list to view it.
+                      Choose a module or course material in the outline to begin.
                     </div>
                   )}
                 </div>
 
+                {activeMaterial && workMode === "materials" && !showAddMaterialForMod && <LearningNotes courseSlug={course.slug} materialId={String(activeMaterial._id)} total={flattenedMats.length} materialIds={flattenedMats.map(x=>String(x.material._id))} />}
                 <div>
                   {isEditing && permissions.edit_course_details ? (
                     <div className="mb-4">
@@ -3726,7 +4139,7 @@ export default function OnlineCourseDetail() {
                       {course.credits} Credits
                     </span>
                     <span>•</span>
-                    <span>Progress: Active</span>
+                    <span>Learning workspace</span>
                   </div>
                 </div>
               </div>
@@ -3747,7 +4160,7 @@ export default function OnlineCourseDetail() {
 
               {/* Right Panel - Module / Materials list */}
               <div
-                className="w-full lg:sticky lg:top-36 shrink-0 transition-all duration-300"
+                className="learning-module-list w-full lg:sticky lg:top-36 shrink-0 transition-all duration-300"
                 style={{
                   display: layoutMode === "fullscreen" ? "none" : "block",
                   width: isLargeScreen
@@ -4661,408 +5074,8 @@ export default function OnlineCourseDetail() {
             </div>
           </div>
         ) : (
-          // Unenrolled Overview UI
-          <div className="grid lg:grid-cols-12 gap-24">
-            <div className="lg:col-span-8">
-              <div className="flex items-center gap-4 mb-8">
-                {course.hasMicrocert && (
-                  <div className="font-mono text-[10px] font-black uppercase tracking-widest bg-brand-acid border border-ink px-3 py-1 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                    MICRO-CERTIFICATION
-                  </div>
-                )}
-                <div className="font-mono text-[10px] font-black uppercase tracking-widest opacity-40">
-                  {course.credits} Credits
-                </div>
-              </div>
-
-              {isEditing &&
-              permissions.edit_course_details &&
-              !simulateUnenrolledParam ? (
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={(e) => setEditTitle(e.target.value)}
-                  className="w-full text-6xl md:text-8xl font-serif font-black italic bg-transparent border-b-2 border-ink focus:outline-none mb-8"
-                />
-              ) : (
-                <h1 className="text-6xl md:text-8xl font-serif font-black italic leading-[0.85] mb-8 perspective-text group">
-                  {course.courseCode ? `[${course.courseCode}] ` : ""}
-                  {course.title}
-                  {permissions.edit_course_details &&
-                    !simulateUnenrolledParam && (
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="ml-4 align-middle text-sm font-mono font-bold uppercase tracking-widest text-brand-blue hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        Edit
-                      </button>
-                    )}
-                </h1>
-              )}
-
-              {isEditing &&
-              permissions.edit_course_details &&
-              !simulateUnenrolledParam ? (
-                <div>
-                  <div className="mb-6">
-                    <label className="block text-[8px] font-mono font-bold uppercase tracking-wider mb-1 text-ink/60">
-                      Course Description
-                    </label>
-                    <textarea
-                      value={editDesc}
-                      onChange={(e) => setEditDesc(e.target.value)}
-                      rows={3}
-                      className="w-full font-serif text-2xl font-light italic leading-tight text-ink/80 bg-transparent border-b-2 border-ink focus:outline-none mb-6"
-                    />
-                  </div>
-                  <div className="mb-12">
-                    <label className="block text-[8px] font-mono font-bold uppercase tracking-wider mb-1 text-ink/60">
-                      Designated YouTube Channel (URL or Handle)
-                    </label>
-                    <input
-                      type="text"
-                      value={editYoutubeChannel}
-                      onChange={(e) => setEditYoutubeChannel(e.target.value)}
-                      placeholder="e.g. https://www.youtube.com/@indicacademy"
-                      className="w-full p-2 border border-ink bg-white font-mono text-[10px] focus:outline-none"
-                    />
-                    <p className="text-[7.5px] font-sans opacity-70 mt-1 uppercase tracking-wider font-bold text-brand-orange">
-                      🎯 Instructors must log into the Google Account associated
-                      with this channel to schedule broadcasts automatically.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="font-serif text-2xl font-light italic leading-tight text-ink/80 mb-12 group">
-                  {course.description}
-                  {permissions.edit_course_details &&
-                    !simulateUnenrolledParam && (
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="ml-4 align-middle text-sm font-mono font-bold uppercase tracking-widest text-brand-blue hover:underline opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        Edit
-                      </button>
-                    )}
-                </p>
-              )}
-
-              {permissions.edit_course_details &&
-                isEditing &&
-                !simulateUnenrolledParam && (
-                  <div className="mb-12 p-4 border border-brand-orange bg-brand-orange/5 space-y-4">
-                    <button
-                      disabled={updateLoading}
-                      onClick={handleUpdateCourse}
-                      className="h-10 px-6 bg-brand-acid text-ink font-mono text-[10px] font-bold uppercase tracking-widest hover:bg-brand-acid/80 shadow-[4px_4px_0px_rgba(0,0,0,1)]"
-                    >
-                      {updateLoading ? "Saving..." : "Save Changes"}
-                    </button>
-                  </div>
-                )}
-
-              <div className="flex flex-wrap gap-8 mb-16 font-mono text-[10px] font-black uppercase tracking-widest text-ink/40">
-                {course.startDate && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3" /> Starts:{" "}
-                    {new Date(course.startDate).toLocaleDateString()}
-                  </div>
-                )}
-                {course.endDate && (
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3" /> Ends:{" "}
-                    {new Date(course.endDate).toLocaleDateString()}
-                  </div>
-                )}
-                <div className="flex items-center gap-2">
-                  <Clock className="w-3 h-3" /> {course.duration}
-                </div>
-                <div className="flex items-center gap-2">
-                  <BookOpen className="w-3 h-3" /> {course.modules} Modules
-                </div>
-                <div className="flex items-center gap-2 text-brand-blue">
-                  <CheckCircle className="w-3 h-3" /> Industry Standard
-                </div>
-              </div>
-
-              <div className="mb-12">
-                <h3 className="font-mono text-[10px] font-black uppercase tracking-[0.3em] mb-8 opacity-40">
-                  Course Modules Content
-                </h3>
-                <div className="space-y-4">
-                  {modulesList.map((mod, midx) => (
-                    <div
-                      key={midx}
-                      className="p-6 border border-ink flex items-start gap-6 bg-white"
-                    >
-                      <div className="font-mono text-3xl font-black opacity-20">
-                        0{midx + 1}
-                      </div>
-                      <div>
-                        <h4 className="font-serif font-black italic mb-2 text-xl">
-                          {mod.title}
-                        </h4>
-                        <p className="font-mono text-[10px] font-bold uppercase tracking-widest opacity-60">
-                          Contains {(mod.materials || []).length} interactive
-                          study resource
-                          {(mod.materials || []).length !== 1 ? "s" : ""}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-4">
-              <div className="sticky top-32 space-y-8">
-                {myStatus?.accepted ? (
-                  myStatus.participant?.paymentStatus === "Confirmed" ? (
-                    <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
-                      <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500 text-ink font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
-                          <Clock className="w-4 h-4 text-ink" strokeWidth={3} />{" "}
-                          ROSTER: REGISTRATION RECEIVED
-                        </div>
-                        <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white font-bold">
-                          Payment Received
-                        </h3>
-                        <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
-                          NAME:{" "}
-                          <span className="font-semibold text-brand-acid">
-                            {myStatus.participant.name}
-                          </span>{" "}
-                          <br />
-                          EMAIL:{" "}
-                          <span className="font-semibold text-brand-acid">
-                            {myStatus.participant.email}
-                          </span>
-                        </p>
-
-                        <div className="p-4 border border-brand-acid bg-brand-acid/10 text-brand-acid flex items-center gap-3 mb-6 font-bold">
-                          <Check
-                            className="w-5 h-5 text-brand-acid shrink-0"
-                            strokeWidth={3}
-                          />
-                          <div className="font-mono text-[10px] font-black uppercase tracking-wide">
-                            Fee Payment Received!
-                          </div>
-                        </div>
-
-                        <div className="p-5 border border-white/20 bg-white/5 space-y-2 rounded-none">
-                          <span className="block text-[10px] font-black uppercase text-brand-orange font-mono tracking-wider">
-                            Admission Review Status
-                          </span>
-                          <p className="text-xs text-paper/85 leading-relaxed font-sans font-medium">
-                            Please check back in a few days for accessing course
-                            materials. Your registration status has been
-                            successfully lodged on the roster, and academic
-                            delegates are verifying final admissions.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
-                      <div>
-                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-orange text-white font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
-                          <AlertCircle className="w-4 h-4" /> ROSTER: PAYMENT
-                          AWAITING
-                        </div>
-                        <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white font-bold">
-                          Fee Settlement
-                        </h3>
-                        <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
-                          NAME:{" "}
-                          <span className="font-semibold text-brand-acid">
-                            {myStatus.participant.name}
-                          </span>{" "}
-                          <br />
-                          EMAIL:{" "}
-                          <span className="font-semibold text-brand-acid">
-                            {myStatus.participant.email}
-                          </span>
-                        </p>
-
-                        <div className="space-y-6">
-                          <div className="p-4 border border-white/20 bg-white/5 flex flex-col gap-2">
-                            <div className="flex justify-between items-center text-xs font-mono font-bold">
-                              <span className="opacity-60">AMOUNT DUE:</span>
-                              <span className="font-bold text-white uppercase">
-                                Rs. {myStatus.participant.fee}
-                              </span>
-                            </div>
-                            {myStatus.participant.paymentDeadline && (
-                              <div className="flex justify-between items-center text-[10px] font-mono text-brand-orange font-bold">
-                                <span>THRESHOLD DEADLINE:</span>
-                                <span className="font-black bg-brand-orange/20 px-2 py-0.5 font-bold">
-                                  {myStatus.participant.paymentDeadline}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          {course.registrationCard?.paymentMsgChoice ===
-                            "link" &&
-                          course.registrationCard?.paymentGatewayLink ? (
-                            <div className="space-y-4">
-                              <p className="text-xs text-paper/85 leading-relaxed font-sans">
-                                Click below to open the external payment
-                                interface.
-                              </p>
-                              <a
-                                href={
-                                  course.registrationCard.paymentGatewayLink
-                                }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-[10px] hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink flex items-center justify-center hover:no-underline text-center"
-                              >
-                                Proceed to Payment Gateway ↗
-                              </a>
-                              <button
-                                type="button"
-                                onClick={handlePayFee}
-                                disabled={payingFee}
-                                className="w-full h-11 border border-brand-acid/40 text-brand-acid/70 hover:border-brand-acid hover:text-brand-acid font-mono text-[9px] uppercase font-bold tracking-wider transition-colors bg-brand-acid/5 cursor-pointer font-bold"
-                              >
-                                {payingFee
-                                  ? "Verifying..."
-                                  : "Simulate Sandbox Payment Receipt"}
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="space-y-4">
-                              {course.registrationCard?.paymentMarkdown ? (
-                                <div className="p-4 border border-white/20 bg-white/5 text-xs text-white/90 font-sans leading-relaxed overflow-y-auto max-h-[220px]">
-                                  <span className="block text-[8px] font-mono font-black uppercase tracking-widest text-brand-acid mb-2 font-bold">
-                                    Instructions
-                                  </span>
-                                  <div
-                                    dangerouslySetInnerHTML={{
-                                      __html: renderMarkdown(
-                                        course.registrationCard.paymentMarkdown,
-                                        true,
-                                      ),
-                                    }}
-                                  />
-                                </div>
-                              ) : (
-                                <p className="text-xs text-paper/84 leading-relaxed font-sans">
-                                  Transfer Rs. {myStatus.participant.fee} to the
-                                  academy account, then click the manual
-                                  simulation button below to acknowledge
-                                  settlement.
-                                </p>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={handlePayFee}
-                                disabled={payingFee}
-                                className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink font-bold"
-                              >
-                                {payingFee
-                                  ? "Processing payment..."
-                                  : "Acknowledge Payment & Request Spot"}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                ) : (
-                  <div className="bg-ink text-paper p-10 brutalist-card text-left border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)]">
-                    <h3 className="text-2xl font-serif font-black italic mb-4 font-bold uppercase tracking-tight text-white leading-none">
-                      {course.registrationCard?.title || "Secure Your Spot"}
-                    </h3>
-                    <p className="text-xs opacity-65 mb-6 leading-relaxed font-mono uppercase tracking-wide">
-                      {course.registrationCard?.description ||
-                        "Enroll in this comprehensive syllabus to start, unlock learning pathways, exercises, and study archives."}
-                    </p>
-
-                    <div className="text-3xl font-serif font-black italic mb-6 text-white leading-none">
-                      {course.fee > 0 ? (
-                        activeDiscount ? (
-                          <>
-                            <span className="line-through text-white/40 text-xl mr-4 font-bold font-sans">
-                              ₹{course.fee}
-                            </span>
-                            <span className="text-ink bg-brand-acid px-2 py-0.5 font-sans font-bold">
-                              ₹{course.fee - activeDiscount.amount}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="font-sans font-bold">
-                            ₹{course.fee}
-                          </span>
-                        )
-                      ) : (
-                        "Free"
-                      )}
-                    </div>
-
-                    {activeDiscount && (
-                      <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-brand-orange mb-8 bg-brand-orange/10 p-2 border border-brand-orange rounded-none">
-                        {activeDiscount.msg}
-                      </div>
-                    )}
-
-                    {course.registrationCard?.buttonLink &&
-                    course.registrationCard?.buttonLink !== "#" ? (
-                      <a
-                        href={course.registrationCard.buttonLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-[10px] hover:bg-white hover:translate-y-[-2px] transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.2)] flex items-center justify-center border border-ink font-bold hover:no-underline"
-                      >
-                        {course.registrationCard.buttonText ||
-                          "Link To Portal &rarr;"}
-                      </a>
-                    ) : getEffectiveStatus(course) === "Archived" ? (
-                      <button
-                        disabled
-                        className="w-full h-16 bg-white/20 text-white/40 flex items-center justify-center gap-3 font-mono font-black uppercase tracking-widest text-xs"
-                      >
-                        <Lock className="w-4 h-4" /> Enrollments Closed
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleEnrollClick}
-                        className="w-full h-16 bg-brand-acid text-ink flex items-center justify-center gap-3 font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:text-ink transition-all active:scale-95 shadow-[6px_6px_0px_rgba(255,255,255,0.2)] hover:shadow-none hover:translate-y-1 hover:translate-x-1 cursor-pointer font-bold"
-                      >
-                        <Lock className="w-4 h-4" />{" "}
-                        {course.registrationCard?.buttonText || "Enroll Now"}
-                      </button>
-                    )}
-
-                    <div className="mt-8 pt-8 border-t border-white/10">
-                      <h5 className="font-mono text-[9px] font-black uppercase tracking-widest opacity-40 mb-4 text-white">
-                        Includes
-                      </h5>
-                      <div className="flex flex-col gap-4">
-                        {(
-                          course.registrationCard?.highlights || [
-                            "Lifetime Access",
-                            "Live Lecture Recordings",
-                            "W2M Certified Badge",
-                          ]
-                        ).map((h: string) => (
-                          <div
-                            key={h}
-                            className="flex items-center gap-2.5 text-[9px] font-mono font-bold uppercase tracking-widest text-white/85 flex"
-                          >
-                            <div className="w-1.5 h-1.5 bg-brand-acid shrink-0" />
-                            <span>{h}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+          // Public layout; learning and editor state remain owned by this controller.
+          <div className="course-public-detail"><RecordHeading kind={eventContext?"event":"course"} record={course} actions={renderParticipationActions()}/><RecordExperience key={course.slug} title={course.title} sections={[...courseSections,{slug:'writing-media',title:'Writing & media',type:'writing'}]} renderSection={section=>section.type==='writing'?<ConnectedWriting type="course" slug={course.slug}/>: renderCourseSection(section)} glance={<RecordGlance record={course} kind={eventContext?"event":"course"} actions={renderParticipationActions()}/>}/>
           </div>
         )}
       </div>

@@ -1,3 +1,18 @@
+import ConnectedWriting from '../features/writing/ConnectedWriting';
+import ParticipationActions from '../site/layout/ParticipationActions';
+import { registrationAvailability } from '../lib/participation';
+import { eventParticipationActions } from '../site/eventParticipation';
+import { learningHref } from '../site/layout/learningAccess';
+import EventHeading from '../site/layout/EventHeading';
+import { useLearningAccess } from '../site/useLearningAccess';
+import { useSiteData } from '../site/data';
+import { courseOverviewPages, isResidentialCourse } from '../site/coursePresentation';
+import RecordContent from '../site/layout/RecordContent';
+import { ConnectedRecords } from '../site/layout/DossierContent';
+import RecordImage from '../site/layout/RecordImage';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance from '../site/layout/RecordGlance';
+import { useLifecycleNow } from '../lib/lifecycleClock';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -16,7 +31,7 @@ import {
   team,
   projects,
 } from "../data/config";
-import { useLatestPeople, resolvePersonImage } from "../lib/peopleOverrides";
+import { useLatestPeople } from "../lib/peopleOverrides";
 import { cn, renderMarkdown } from "../lib/utils";
 import { getEffectiveStatus } from "../lib/courseStatus";
 import { useAuth } from "../context/AuthContext";
@@ -118,7 +133,10 @@ export function getGoogleDriveEmbedUrl(url: string | undefined): string | null {
 }
 
 export default function EventDetail() {
-  const peopleList = useLatestPeople();
+  const now=useLifecycleNow();
+  const cachedPeople = useLatestPeople();
+  const {data:publicSiteData,loading:loadingPublicSite}=useSiteData();
+  const peopleList = loadingPublicSite?cachedPeople:publicSiteData.people;
   const { slug } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -141,15 +159,16 @@ export default function EventDetail() {
     return null;
   };
   const [loading, setLoading] = useState<boolean>(true);
-  const [activeTabSlug, setActiveTabSlug] = useState<string>("overview");
+  const [activeTabSlug, setActiveTabSlug] = useState<string>(new URLSearchParams(window.location.search).get("participate") === "1" ? "registration" : "overview");
 
   const [activeScheduleDayIdx, setActiveScheduleDayIdx] = useState<number>(0);
   useEffect(() => {
     setActiveScheduleDayIdx(0);
-  }, [activeTabSlug, slug]);
+  }, [slug]);
 
   // Participant status
   const [myStatus, setMyStatus] = useState<any>(null);
+  const learningAccess=useLearningAccess(slug,`${myStatus?.participant?.admissionStatus||''}:${myStatus?.participant?.paymentStatus||''}`);
   const [simulateEnrolled, setSimulateEnrolled] = useState(() => {
     return (
       searchParams.get("simulate") === "enrolled" ||
@@ -477,6 +496,7 @@ export default function EventDetail() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
+          __v: event.__v,
           supportOfficeText: supportTextDraft.trim(),
           supportOfficeEmail: supportEmailDraft.trim(),
         }),
@@ -587,11 +607,11 @@ export default function EventDetail() {
 
   useEffect(() => {
     loadEventAndStatus();
-  }, [slug]);
+  }, [slug, token, myStatus?.participant?.admissionStatus, myStatus?.participant?.paymentStatus]);
 
   // Load User specific acceptance status
   async function loadUserStatus() {
-    if (!token || !slug) return;
+    if (!token || !slug) { setMyStatus(null); return; }
     try {
       const res = await fetch(`/api/events/${slug}/my-status`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -631,6 +651,10 @@ export default function EventDetail() {
     if (isOrganizer) {
       loadOrganizerLists();
     }
+    const refresh=()=>{if(document.visibilityState!=='hidden')loadUserStatus();};
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return ()=>{window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
   }, [slug, token, isOrganizer]);
 
   // URL query tab override e.g. ?tab=sessions
@@ -643,6 +667,8 @@ export default function EventDetail() {
 
   // Handle Event simulated Payment
   const handlePayFee = async () => {
+    const gate=registrationAvailability(event,myStatus?.participant,Date.now());
+    if(!gate.allowed){alert(gate.reason);return;}
     if (!token) return;
     try {
       setPayingFee(true);
@@ -670,6 +696,8 @@ export default function EventDetail() {
 
   // Self-enroll directly for materials access
   const handleEnrollMaterials = async () => {
+    const gate=registrationAvailability(event?.registrationCard?.actionPhases?.length?event:{...event,registrationState:undefined},myStatus?.participant,Date.now());
+    if(!gate.allowed){alert(gate.reason);return;}
     if (!token) {
       alert(
         "Please login or register first to enroll in this completed course / access materials.",
@@ -691,7 +719,7 @@ export default function EventDetail() {
         loadUserStatus();
         loadEventAndStatus();
         if (event?.isCourse || event?.type?.includes("Residential")) {
-          navigate(`/academy/online/${event?.slug}`);
+          navigate(`/academy/online/${event?.slug}?learn=1&context=${event?.isCourse||isResidentialCourse(event)?"course":"event"}${searchParams.get("from")?`&from=${searchParams.get("from")}`:""}`);
         } else {
           setActiveTabSlug("sessions");
         }
@@ -1081,7 +1109,7 @@ export default function EventDetail() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ modulesList: updatedModules }),
+        body: JSON.stringify({ __v: event.__v, modulesList: updatedModules }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1123,7 +1151,7 @@ export default function EventDetail() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ modulesList: updatedModules }),
+        body: JSON.stringify({ __v: event.__v, modulesList: updatedModules }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1160,7 +1188,7 @@ export default function EventDetail() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ modulesList: updatedModules }),
+        body: JSON.stringify({ __v: event.__v, modulesList: updatedModules }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1192,7 +1220,7 @@ export default function EventDetail() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ modulesList: updatedModules }),
+        body: JSON.stringify({ __v: event.__v, modulesList: updatedModules }),
       });
       const data = await res.json();
       if (data.success) {
@@ -1222,10 +1250,10 @@ export default function EventDetail() {
             Event Dossier Not Decoupled
           </h1>
           <Link
-            to="/events"
+            to={searchParams.get("from")==="academy"?"/academy/residential":"/events"}
             className="text-brand-blue font-mono font-bold uppercase tracking-widest hover:underline"
           >
-            Back to All Events
+            {searchParams.get("from")==="academy"?"Back to W2M Academy":"Back to All Events"}
           </Link>
         </div>
       </div>
@@ -1245,7 +1273,7 @@ export default function EventDetail() {
 
   // Determine standard sub-pages/tabs list
   const tabsList = [
-    ...((event.subPages && event.subPages.length > 0)
+    ...((event.isCourse||isResidentialCourse(event))?courseOverviewPages(event):(event.subPages && event.subPages.length > 0)
       ? event.subPages
       : [
           {
@@ -1257,6 +1285,8 @@ export default function EventDetail() {
           },
         ]),
   ];
+
+  if (!tabsList.some(section=>section.type==='registration')) tabsList.push({slug:'registration',title:'Registration',type:'registration',content:{}});
 
   // Append accepted cohort list if published publicly
   if (
@@ -1279,10 +1309,8 @@ export default function EventDetail() {
   }
 
   // Add Courseware & Session materials tab for confirmed attendees or organizers/TAs
-  const hasCoursewareAccess =
-    (effectiveMyStatus &&
-      effectiveMyStatus.participant?.admissionStatus === "Confirmed") ||
-    isOrganizer;
+  const hasCoursewareAccess = !!user && (
+    (effectiveMyStatus && effectiveMyStatus.participant?.admissionStatus === "Confirmed" && effectiveMyStatus.participant?.paymentStatus === "Confirmed") || isOrganizer);
   const isCompletedCourse = event && getEffectiveStatus(event) === "Completed";
   // if (hasCoursewareAccess && !tabsList.some(t => t.slug === 'sessions')) {
   //   tabsList.push({
@@ -1316,1056 +1344,21 @@ export default function EventDetail() {
       content: { teaser: event.description, markdown: event.longDescription },
     };
 
-  return (
-    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure">
-      <div className="max-w-[1600px] mx-auto">
-        {/* Helper custom alert message */}
-        {searchParams.get("alertMsg") && (
-          <div className="mb-8 p-5 border border-brand-orange bg-brand-orange/5 text-brand-orange font-mono text-xs font-bold uppercase tracking-widest flex items-center justify-between gap-4 animate-fade-in shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-            <div className="flex items-center gap-3">
-              <span className="text-sm">⚠️</span>
-              <span>{searchParams.get("alertMsg")}</span>
-            </div>
-            <button
-              onClick={() => {
-                const url = new URL(window.location.href);
-                url.searchParams.delete("alertMsg");
-                navigate(url.pathname + url.search, { replace: true });
-              }}
-              className="text-[10px] underline uppercase hover:text-ink cursor-pointer font-black"
-            >
-              Dismiss
-            </button>
-          </div>
-        )}
-
-        {/* Course Simulation Dashboard */}
-        {(isOrganizer ||
-          searchParams.get("simulate") === "unenrolled" ||
-          searchParams.get("simulate") === "enrolled") && (
-          <div className="mb-12 p-6 border-2 border-dashed border-brand-orange bg-brand-orange/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-[4px_4px_0px_rgba(0,0,0,1)] animate-fade-in">
-            <div className="max-w-2xl text-left">
-              <h4 className="font-mono text-xs font-black uppercase tracking-widest text-brand-orange flex items-center gap-2">
-                ⚠️ COURSE SIMULATOR SYSTEM: INSTRUCTOR PLAYGROUND
-              </h4>
-              <p className="text-[10px] text-ink/75 font-mono mt-2 leading-relaxed uppercase">
-                You are previewing this residency course iteration as an authorized instructor/organizer. Toggle the interactive simulator controls below to review the student onboarding pipeline.
-              </p>
-            </div>
-            <div className="flex gap-4 shrink-0">
-              <button
-                onClick={() => {
-                  setSimulateEnrolled(false);
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("simulate", "unenrolled");
-                  navigate(url.pathname + url.search, { replace: true });
-                }}
-                className={`h-11 px-6 border border-ink font-mono text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
-                  !simulateEnrolled
-                    ? "bg-brand-orange text-white shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px]"
-                    : "bg-paper hover:bg-brand-orange/10 text-ink"
-                }`}
-              >
-                Unenrolled Preview
-              </button>
-              <button
-                onClick={() => {
-                  setSimulateEnrolled(true);
-                  const url = new URL(window.location.href);
-                  url.searchParams.set("simulate", "enrolled");
-                  navigate(url.pathname + url.search, { replace: true });
-                }}
-                className={`h-11 px-6 border border-ink font-mono text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
-                  simulateEnrolled
-                    ? "bg-brand-orange text-white shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px]"
-                    : "bg-paper hover:bg-brand-orange/10 text-ink"
-                }`}
-              >
-                Simulated Enrolled View
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Navigation Action Row */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-12 pb-6 border-b border-ink/10">
-          <Link
-            to="/events"
-            className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] hover:text-brand-blue transition-colors group"
-          >
-            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-            Back to Events Agenda
-          </Link>
-
-          {isOrganizer && (
-            <div className="flex gap-3 flex-wrap">
-              <button
-                onClick={handleEditEventClick}
-                className="h-10 px-5 border border-ink bg-brand-acid text-ink font-mono text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-ink hover:text-brand-acid transition-all cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] font-bold"
-              >
-                <Edit3 className="w-3.5 h-3.5" /> Edit Event
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setConfirmModal({
-                    isOpen: true,
-                    title: "Permanently Delete Event",
-                    message: `Are you absolutely sure you want to permanently delete "${event.title}"? This action is irreversible.`,
-                    confirmText: "Delete Permanently",
-                    cancelText: "Cancel",
-                    isDangerous: true,
-                    onConfirm: async () => {
-                      try {
-                        const res = await fetch(
-                          getEventApiUrl(event._id || event.slug),
-                          {
-                            method: "DELETE",
-                            headers: {
-                              "Content-Type": "application/json",
-                              Authorization: `Bearer ${token}`,
-                            },
-                          },
-                        );
-                        const data = await res.json();
-                        if (data.success) {
-                          alert("Success! Event has been permanently deleted.");
-                          window.location.href = "/events";
-                        } else {
-                          alert(
-                            "Deletion failure: " +
-                              (data.error || "Permission denied"),
-                          );
-                        }
-                      } catch (err) {
-                        console.error(err);
-                        alert(
-                          "Error connecting to backend delete route: " +
-                            String(err),
-                        );
-                      } finally {
-                        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-                      }
-                    },
-                  });
-                }}
-                className="h-10 px-5 border border-ink bg-white hover:bg-brand-orange hover:text-white text-ink font-mono text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] font-bold"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-brand-orange hover:text-white" />{" "}
-                Delete Event
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Hero Area */}
-        <div className="grid lg:grid-cols-2 gap-24 items-end mb-20 animate-fade-in">
-          <div>
-            <div className="flex flex-wrap items-center gap-4 mb-8">
-              <span
-                className={`px-2.5 py-1 text-[9px] font-mono font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] ${
-                  event.status === "Upcoming"
-                    ? "bg-brand-orange text-white"
-                    : event.status === "Ongoing"
-                      ? "bg-brand-acid text-ink animate-pulse"
-                      : event.status === "Completed"
-                        ? "bg-emerald-600 text-white"
-                        : event.status === "Draft"
-                          ? "bg-amber-400 text-ink"
-                          : "bg-ink/10 text-ink/75 bg-paper"
-                }`}
-              >
-                {event.status} Event
-              </span>
-              <div className="px-4 py-1 text-[10px] font-mono font-black uppercase tracking-widest bg-brand-acid text-ink border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] font-semibold">
-                {event.type}
-              </div>
-            </div>
-
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-serif font-black leading-tight mb-12 text-left font-bold">
-              {event.title}
-            </h1>
-
-            {/* Timings / Location Box */}
-            <div className="border border-ink bg-white p-8 mb-6 shadow-[6px_6px_0px_rgba(0,0,0,1)] grid sm:grid-cols-2 gap-8">
-              <div className="space-y-2 text-left">
-                <div className="font-mono text-[10px] font-black uppercase tracking-wider text-ink/30 flex items-center gap-1">
-                  <Calendar className="w-4 h-4 text-brand-orange" /> Schedule
-                  Gates
-                </div>
-                <p className="font-mono text-xs font-black uppercase text-ink">
-                  {event.dates}
-                </p>
-              </div>
-              <div className="space-y-2 text-left">
-                <div className="font-mono text-[10px] font-black uppercase tracking-wider text-ink/30 flex items-center gap-1">
-                  <MapPin className="w-4 h-4 text-brand-blue" /> Venue Hub
-                </div>
-                <p className="font-mono text-xs font-black uppercase text-ink">
-                  {getVenueMapLink() ? (
-                    <a
-                      href={getVenueMapLink()!}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hover:underline text-brand-blue inline-flex items-center gap-1"
-                    >
-                      {event.location} <span className="text-[9px]">📍</span>
-                    </a>
-                  ) : (
-                    event.location
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="relative aspect-[16/10] lg:aspect-square border border-ink shadow-[20px_20px_0px_var(--color-brand-orange)] overflow-hidden bg-white group/banner">
-            <img
-              src={event.image}
-              alt={event.title}
-              className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
-              referrerPolicy="no-referrer"
-            />
-            {isOrganizer && (
-              <div className="absolute inset-0 bg-ink/75 opacity-0 group-hover/banner:opacity-100 transition-opacity flex flex-col justify-center items-center gap-4 p-6 z-10 font-mono text-xs">
-                <p className="text-white uppercase font-black tracking-wider text-[11px]">
-                  Banner Photograph Controls
-                </p>
-                <label className="px-4 py-2 border border-white bg-brand-orange text-white text-xs uppercase tracking-widest cursor-pointer shadow-[3px_3px_0px_rgba(255,255,255,1)] hover:bg-black font-black font-bold">
-                  {isUploadingCloudinary
-                    ? "Uploading Photo..."
-                    : "Replace Photo 📷"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    disabled={isUploadingCloudinary}
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      const reader = new FileReader();
-                      reader.onloadend = async () => {
-                        const dataUrl = reader.result as string;
-                        const cloudUrl = await uploadToCloudinary({ dataUrl });
-                        if (cloudUrl) {
-                          try {
-                            const res = await fetch(
-                              getEventApiUrl(event._id || event.slug),
-                              {
-                                method: "PUT",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                  Authorization: `Bearer ${token}`,
-                                },
-                                body: JSON.stringify({
-                                  ...event,
-                                  image: cloudUrl,
-                                }),
-                              },
-                            );
-                            if (res.ok) {
-                              alert(
-                                "Success! Photograph uploaded & updated on system database.",
-                              );
-                              loadEventAndStatus();
-                            } else {
-                              alert(
-                                "Photograph could not be synced to the database.",
-                              );
-                            }
-                          } catch (err) {
-                            console.error(err);
-                          }
-                        }
-                      };
-                      reader.readAsDataURL(file);
-                    }}
-                  />
-                </label>
-                <button
-                  onClick={() => {
-                    setConfirmModal({
-                      isOpen: true,
-                      title: "Permanently Delete Event",
-                      message: `Are you absolutely sure you want to permanently delete "${event.title}"? This action is irreversible.`,
-                      confirmText: "Delete Permanently",
-                      cancelText: "Cancel",
-                      isDangerous: true,
-                      onConfirm: async () => {
-                        try {
-                          const res = await fetch(
-                            getEventApiUrl(event._id || event.slug),
-                            {
-                              method: "DELETE",
-                              headers: {
-                                "Content-Type": "application/json",
-                                Authorization: `Bearer ${token}`,
-                              },
-                            },
-                          );
-                          const data = await res.json();
-                          if (data.success) {
-                            alert(
-                              "Success! Event has been permanently deleted.",
-                            );
-                            window.location.href = "/events";
-                          } else {
-                            alert(
-                              "Deletion failure: " +
-                                (data.error || "Permission denied"),
-                            );
-                          }
-                        } catch (err) {
-                          console.error(err);
-                          alert(
-                            "Error connecting inside overlay: " + String(err),
-                          );
-                        }
-                      },
-                    });
-                  }}
-                  className="px-4 py-2 border border-white bg-red-600 text-white text-xs uppercase tracking-widest shadow-[3px_3px_0px_rgba(255,255,255,1)] hover:bg-black font-black font-bold"
-                >
-                  Delete Event 🗑️
-                </button>
-              </div>
-            )}
-            <div className="absolute top-4 right-4 bg-paper p-6 border border-ink shadow-[8px_8px_0px_rgba(0,0,0,1)]">
-              <Zap className="w-12 h-12 text-ink opacity-20" />
-            </div>
-          </div>
-        </div>
-
-        {/* Executive summary block */}
-        <div className="border-t border-ink pt-16 mb-20">
-          <div className="max-w-4xl text-left">
-            <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-6">
-              Event Abstract & Core Directives
-            </div>
-            <p className="font-serif text-3xl font-medium leading-relaxed italic text-ink/90">
-              {event.longDescription || event.description}
-            </p>
-          </div>
-        </div>
-
-        {/* Interactive Customizable Sub-Pages & Tabs Grid */}
-        <div className="border-t border-ink pt-16">
-          <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/40 mb-10 flex items-center gap-2">
-            <span className="w-12 h-[1px] bg-ink/20" />
-            Interactive Event Dossier & Customizable Chapters
-          </div>
-
-          <div className="grid lg:grid-cols-12 gap-16 items-start">
-            {/* Sidebar Tab Control - 2 Cols */}
-            <div className="lg:col-span-2 lg:sticky lg:top-24 max-h-[calc(100vh-140px)] overflow-y-auto">
-              <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0 scrollbar-none antialiased">
-                {tabsList.map((tab) => {
-                  const TabIcon = getIcon(tab.icon || "Megaphone");
-                  const isActive = activeTab.slug === tab.slug;
-                  return (
-                    <button
-                      key={tab.slug}
-                      onClick={() => setActiveTabSlug(tab.slug)}
-                      className={cn(
-                        "flex items-center gap-3.5 px-5 py-4 border text-left font-mono text-[10px] uppercase tracking-wider font-black transition-all shrink-0 lg:shrink cursor-pointer",
-                        isActive
-                          ? "bg-ink text-paper border-ink border-2 shadow-[4px_4px_0px_var(--color-brand-acid)]"
-                          : "bg-white hover:bg-brand-acid/15 border-ink/40 text-ink shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:border-ink hover:translate-x-0.5",
-                      )}
-                    >
-                      <TabIcon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{tab.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Connected Supervisor / Organiser Box on sidebar */}
-              <div className="mt-12 hidden lg:grid gap-8 p-6 bg-white border border-ink/30 shadow-[4px_4px_0px_rgba(0,0,0,1)] text-left">
-                <div>
-                  <div className="text-[9px] font-mono font-black uppercase tracking-widest text-ink/30 mb-3">
-                    Host Supervisor
-                  </div>
-                  {associatedCentres.map((c) => (
-                    <Link
-                      to={`/centres/${c.slug}`}
-                      key={c.slug}
-                      className="font-serif font-black text-xs hover:underline uppercase text-brand-blue tracking-tight hover:no-underline block mb-2 font-bold"
-                    >
-                      {c.shortName} / {c.name}
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Dynamic Active Tab Content Panel - 6 Cols */}
-            <div className="lg:col-span-6 p-8 md:p-12 border-2 border-ink bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] min-h-[480px] flex flex-col justify-between">
-              {/* Tab Header block */}
-              <div>
-                <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-ink/10 text-left">
-                  <div className="p-3 bg-brand-acid text-ink border border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                    {(() => {
-                      const ActiveIcon = getIcon(activeTab.icon || "Megaphone");
-                      return <ActiveIcon className="w-5 h-5 text-ink" />;
-                    })()}
-                  </div>
-                  <div>
-                    <h2 className="font-serif text-3xl font-black text-ink uppercase leading-none font-bold">
-                      {activeTab.title}
-                    </h2>
-                    <p className="font-mono text-[9px] uppercase tracking-widest text-ink/40 font-bold mt-1">
-                      Event Document Segment // Section{" "}
-                      {activeTab.slug.toUpperCase()}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Tab Content Router */}
-                <div className="animate-fade-in text-left">
-                  {/* type 1: markdown */}
-                  {activeTab.type === "markdown" && (
-                    <div className="space-y-6">
-                      {activeTab.content.teaser && (
-                        <div 
-                          className="font-serif text-2xl italic leading-relaxed text-ink/80 border-l-4 border-brand-orange pl-6 mb-8 uppercase tracking-tight"
-                          dangerouslySetInnerHTML={{ __html: renderMarkdown(activeTab.content.teaser) }}
-                        />
-                      )}
-                      <div
-                        className="prose max-w-none text-ink text-sm leading-relaxed bg-paper/50 p-6 border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)]"
-                        dangerouslySetInnerHTML={{
-                          __html: renderMarkdown(
-                            activeTab.content.markdown || "",
-                          ),
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {/* type 2: dates */}
-                  {activeTab.type === "dates" && (
-                    <div className="space-y-6">
-                      <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] divide-y divide-ink">
-                        {activeTab.content.map((dt: any, idx: number) => (
-                          <div
-                            key={idx}
-                            className={cn(
-                              "p-6 flex flex-col sm:flex-row justify-between sm:items-center gap-4 transition-colors",
-                              dt.highlighted
-                                ? "bg-brand-acid/30"
-                                : "hover:bg-paper/30",
-                            )}
-                          >
-                            <div className="font-mono text-xs font-black uppercase tracking-wider text-ink">
-                              {dt.label}
-                            </div>
-                            <div className="flex flex-col sm:items-end shrink-0">
-                              <span className="font-mono text-xs font-black text-brand-orange uppercase bg-ink text-paper py-1 px-3 border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] font-semibold">
-                                {dt.date}
-                              </span>
-                              {dt.footnote && (
-                                <span 
-                                  className="font-mono text-[9px] text-ink/50 uppercase mt-1.5 font-black tracking-widest font-bold"
-                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(dt.footnote) }}
-                                />
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* type 3: schedule */}
-                  {activeTab.type === "schedule" && (
-                    <div className="space-y-8 text-left">
-                      {(() => {
-                        const contentObj = activeTab.content || {};
-                        const isV2Format = contentObj && !Array.isArray(contentObj) && (contentObj.scheduleDays || contentObj.googleDriveLink || contentObj.document);
-
-                        if (isV2Format) {
-                          const { googleDriveLink, document, scheduleDays = [] } = contentObj;
-                          return (
-                            <div className="space-y-6">
-                              {/* Document Downloader Widget */}
-                              {document && (
-                                <div className="p-4 border-2 border-ink bg-zinc-50 rounded flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                                  <div className="flex items-center gap-3">
-                                    <div className="p-3 bg-brand-orange/10 border border-brand-orange text-brand-orange rounded">
-                                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                      </svg>
-                                    </div>
-                                    <div className="text-left">
-                                      <p className="font-bold text-[9px] font-mono uppercase text-brand-orange">Attached Document</p>
-                                      <p className="font-serif text-sm font-black text-ink">{document.name}</p>
-                                      {document.size && <p className="text-[10px] text-ink/55 font-mono">Size: {document.size}</p>}
-                                    </div>
-                                  </div>
-                                  
-                                  <div className="flex flex-wrap gap-2 w-full sm:w-auto shrink-0 leading-none">
-                                    <a 
-                                      href={document.dataUrl} 
-                                      download={document.name}
-                                      className="flex-1 sm:flex-none text-center px-4 py-2.5 bg-brand-acid text-black border border-ink text-xs font-bold font-mono tracking-wider hover:-translate-x-[1px] hover:-translate-y-[1px] shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-[3px_3px_0px_rgba(0,0,0,1)] transition-all uppercase rounded-xs"
-                                    >
-                                      Download Material
-                                    </a>
-                                    {document.type === 'application/pdf' && (
-                                      <a 
-                                        href={document.dataUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex-1 sm:flex-none text-center px-4 py-2.5 bg-white text-ink border border-ink text-xs font-bold font-mono tracking-wider hover:-translate-x-[1px] hover:-translate-y-[1px] shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:shadow-[3px_3px_0px_rgba(0,0,0,1)] transition-all uppercase rounded-xs"
-                                      >
-                                        Preview PDF File
-                                      </a>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Google Drive Embedded Presentation Viewer */}
-                              {googleDriveLink && (
-                                <div className="border border-ink rounded overflow-hidden shadow-[4px_4px_0px_rgba(0,0,0,1)] bg-white">
-                                  <div className="bg-ink text-paper p-3 px-4 font-mono text-[9px] uppercase tracking-widest flex items-center justify-between">
-                                    <span className="font-bold">🌐 Embedded Google Drive Viewer</span>
-                                    <a href={googleDriveLink} target="_blank" rel="noopener noreferrer" className="text-brand-acid hover:underline uppercase font-bold text-[8px]">Open in Tab &rarr;</a>
-                                  </div>
-                                  <div className="w-full aspect-[4/3] sm:aspect-[16/9] bg-stone-100">
-                                    <iframe 
-                                      src={getGoogleDriveEmbedUrl(googleDriveLink) || ''} 
-                                      className="w-full h-full border-none" 
-                                      allow="autoplay"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Hierarchical Schedule Days */}
-                              <div className="space-y-6">
-                                {scheduleDays.length === 0 ? (
-                                  <div className="p-8 border border-ink border-dashed bg-white text-center font-mono text-xs text-ink/45">
-                                    No scheduled day segments listed yet.
-                                  </div>
-                                ) : (
-                                  <>
-                                    {/* Day-wise tabs */}
-                                    <div className="flex flex-wrap gap-2 border-b border-ink/10 pb-4 select-none mb-2">
-                                      {scheduleDays.map((day: any, idx: number) => {
-                                        const selectedDayIdx = activeScheduleDayIdx < scheduleDays.length ? activeScheduleDayIdx : 0;
-                                        const isSelected = idx === selectedDayIdx;
-                                        return (
-                                          <button
-                                            key={day.id || idx}
-                                            type="button"
-                                            onClick={() => setActiveScheduleDayIdx(idx)}
-                                            className={`px-4 py-2 font-mono text-left tracking-wide border-2 transition-all cursor-pointer rounded-xs ${
-                                              isSelected
-                                                ? 'bg-brand-acid text-black border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)] -translate-y-[1.5px]'
-                                                : 'bg-white text-ink/75 border-ink/30 hover:border-ink hover:text-ink hover:bg-stone-50'
-                                            }`}
-                                          >
-                                            <span className="block text-[8px] opacity-60 font-black tracking-normal uppercase mb-0.5">DAY {idx + 1}</span>
-                                            <span className="font-bold text-xs">{day.date || `Day ${idx + 1}`}</span>
-                                            {day.name && (
-                                              <span className="block text-[8px] font-normal opacity-50 truncate max-w-[140px] lowercase">{day.name}</span>
-                                            )}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-
-                                    {/* Selected Day View */}
-                                    {(() => {
-                                      const selectedDayIdx = activeScheduleDayIdx < scheduleDays.length ? activeScheduleDayIdx : 0;
-                                      const day = scheduleDays[selectedDayIdx];
-                                      if (!day) return null;
-                                      return (
-                                        <div key={day.id || selectedDayIdx} className="space-y-6 animate-fade-in text-left">
-                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-ink pb-3">
-                                            <h3 className="font-serif text-xl sm:text-2xl font-black italic text-brand-orange flex items-center gap-2">
-                                              <Calendar className="w-5 h-5 text-brand-orange shrink-0" />
-                                              <span>{day.date}</span>
-                                              {day.name && (
-                                                <span className="hidden sm:inline-block font-mono text-[9px] text-ink bg-brand-acid border border-ink px-2 py-0.5 tracking-tight font-black uppercase rounded-xs ml-2 normal-case">
-                                                  {day.name}
-                                                </span>
-                                              )}
-                                            </h3>
-                                            {day.name && (
-                                              <div className="sm:hidden self-start">
-                                                <span className="font-mono text-[9px] text-ink bg-brand-acid border border-ink px-2 py-0.5 tracking-tight font-black uppercase rounded-xs">
-                                                  {day.name}
-                                                </span>
-                                              </div>
-                                            )}
-                                          </div>
-
-                                          {/* Optional Day Description with Markdown support */}
-                                          {day.description && (
-                                            <div 
-                                              className="p-5 border-2 border-ink bg-amber-50/20 text-xs text-ink/85 font-sans prose prose-sm max-w-none leading-relaxed shadow-[4px_4px_0px_rgba(0,0,0,1)] rounded-xs"
-                                              dangerouslySetInnerHTML={{ __html: renderMarkdown(day.description) }} 
-                                            />
-                                          )}
-
-                                          <div className="space-y-4">
-                                            {day.sessions && day.sessions.map((session: any, sIdx: number) => (
-                                              <div key={session.id || sIdx} className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)]">
-                                                
-                                                {/* Timeslot Header bar */}
-                                                <div className="bg-zinc-50 border-b border-ink/15 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-left">
-                                                  <div className="flex flex-wrap items-center gap-2.5">
-                                                    <span className="font-mono text-xs font-black uppercase tracking-wider text-brand-orange flex items-center gap-1.5 font-semibold">
-                                                      <Clock className="w-4 h-4 text-brand-orange" />
-                                                      {session.timeLabel}
-                                                    </span>
-                                                    {session.sessionName && (
-                                                      <span className="font-serif font-black text-sm text-ink italic">
-                                                        — &ldquo;{session.sessionName}&rdquo;
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                  {session.venue && (
-                                                    <span className="font-mono text-[9px] text-brand-blue uppercase font-bold bg-brand-blue/5 border border-brand-blue/15 px-2.5 py-0.5 rounded flex items-center gap-1 leading-none self-start sm:self-auto">
-                                                      <MapPin className="w-3.5 h-3.5" />
-                                                      {session.venue}
-                                                    </span>
-                                                  )}
-                                                </div>
-
-                                                {/* Sessions Nested list */}
-                                                <div className="divide-y divide-ink/10">
-                                                  {session.entries && session.entries.map((entry: any, eIdx: number) => (
-                                                    <div key={entry.id || eIdx} className="p-5 text-left space-y-2">
-                                                      <div>
-                                                        <h4 className="font-serif text-lg font-black text-ink leading-snug">
-                                                          {entry.topic}
-                                                        </h4>
-                                                        {entry.speaker && (
-                                                          <span className="px-2.5 py-0.5 bg-brand-blue/10 text-brand-blue font-mono text-[9px] font-black uppercase tracking-wider border border-brand-blue/15 font-bold inline-block mt-1.5">
-                                                            Led by: {entry.speaker}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      {entry.details && (
-                                                        <div 
-                                                          className="text-xs text-ink/75 font-sans prose prose-sm max-w-none leading-relaxed pl-3 border-l border-ink/15" 
-                                                          dangerouslySetInnerHTML={{ __html: renderMarkdown(entry.details) }} 
-                                                        />
-                                                      )}
-                                                    </div>
-                                                  ))}
-                                                  {(!session.entries || session.entries.length === 0) && (
-                                                    <div className="p-4 text-center font-mono text-[10px] text-ink/40">
-                                                      No individual presentations assigned.
-                                                    </div>
-                                                  )}
-                                                </div>
-
-                                              </div>
-                                            ))}
-                                            {(!day.sessions || day.sessions.length === 0) && (
-                                              <div className="p-6 text-center border-dashed border border-ink/10 font-mono text-xs text-ink/40">
-                                                No parallel sessions declared.
-                                              </div>
-                                            )}
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        // Legacies flat list rendering logic
-                        const items = activeTab.content || event.schedule || [];
-                        const grouped: { [key: string]: any[] } = {};
-                        items.forEach((item: any) => {
-                          const d = item.date || "General Schedule";
-                          if (!grouped[d]) grouped[d] = [];
-                          grouped[d].push(item);
-                        });
-
-                        const groupedEntries = Object.entries(grouped);
-
-                        if (items.length === 0) {
-                          return (
-                            <div className="p-8 border border-ink border-dashed bg-white text-center font-mono text-xs text-ink/45">
-                              No schedule segments configured yet.
-                            </div>
-                          );
-                        }
-
-                        // Tab index for legacy grouped entries
-                        const selectedGroupIdx = activeScheduleDayIdx < groupedEntries.length ? activeScheduleDayIdx : 0;
-                        const [selectedDate, dayItems] = groupedEntries[selectedGroupIdx] || [];
-
-                        return (
-                          <div className="space-y-6">
-                            {groupedEntries.length > 1 && (
-                              <div className="flex flex-wrap gap-1.5 border-b border-ink/20 pb-3">
-                                {groupedEntries.map(([date], idx) => {
-                                  const isSelected = idx === selectedGroupIdx;
-                                  return (
-                                    <button
-                                      key={idx}
-                                      type="button"
-                                      onClick={() => setActiveScheduleDayIdx(idx)}
-                                      className={`px-3 py-1.5 font-mono font-black text-xs uppercase tracking-wide border-2 transition-all cursor-pointer rounded-xs select-none ${
-                                        isSelected
-                                          ? 'bg-brand-acid text-black border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)] -translate-y-[1px]'
-                                          : 'bg-white text-ink/75 border-ink/30 hover:border-ink hover:text-ink hover:bg-stone-50'
-                                      }`}
-                                    >
-                                      <span className="block text-[8px] opacity-60 font-medium tracking-tight mb-0.5">DAY {idx + 1}</span>
-                                      <span className="font-bold">{date}</span>
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-
-                            {selectedDate && (
-                              <div className="space-y-3 animate-fade-in">
-                                <h3 className="font-serif text-xl font-black italic text-brand-orange border-b-2 border-ink pb-1 flex items-center gap-2">
-                                  <Calendar className="w-5 h-5 text-brand-orange" />
-                                  {selectedDate}
-                                </h3>
-                                <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] divide-y divide-ink">
-                                  {dayItems.map((item: any, itemIdx: number) => (
-                                    <div
-                                      key={itemIdx}
-                                      className="p-6 flex flex-col sm:flex-row items-start sm:items-center gap-6 hover:bg-brand-acid/10 transition-colors"
-                                    >
-                                      <div className="sm:w-1/4 shrink-0 font-mono text-xs font-black uppercase tracking-wider text-brand-orange flex items-center gap-1.5 font-semibold">
-                                        <Clock className="w-4 h-4 text-brand-orange" />
-                                        {item.time}
-                                      </div>
-                                      <div className="sm:w-3/4 text-left">
-                                        <h4 className="font-serif text-xl font-black mb-1.5 text-ink leading-snug font-bold">
-                                          {item.topic}
-                                        </h4>
-                                        {item.speaker && (
-                                          <span className="px-2.5 py-1 bg-brand-blue/15 text-brand-blue font-mono text-[9px] font-black uppercase tracking-widest border border-brand-blue/20 font-bold inline-block mb-2">
-                                            Led by: {item.speaker}
-                                          </span>
-                                        )}
-                                        {item.details && (
-                                          <div 
-                                            className="text-xs text-ink/70 mt-2 font-sans prose prose-sm leading-normal"
-                                            dangerouslySetInnerHTML={{ __html: renderMarkdown(item.details) }}
-                                          />
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {/* type 4: registration / fees */}
-                  {activeTab.type === "registration" && (
-                    <div className="space-y-8">
-                      {activeTab.content.deadline && (
-                        <div className="p-4 border border-ink bg-brand-orange/15 text-ink flex items-center gap-3">
-                          <AlertCircle className="w-5 h-5 text-brand-orange animate-pulse" />
-                          <div className="font-mono text-[10px] font-black uppercase tracking-wider">
-                            Registration Threshold Gates:{" "}
-                            <span className="bg-brand-orange text-white px-2 py-0.5 border border-ink ml-1.5 font-bold">
-                              {activeTab.content.deadline}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] overflow-hidden">
-                        <div className="border-b border-ink bg-brand-acid/40 px-6 py-4 font-mono text-[10px] font-black uppercase tracking-widest font-semibold">
-                          Standard Registration Fee Schedules
-                        </div>
-                        <table className="w-full text-left font-mono text-xs border-collapse">
-                          <thead>
-                            <tr className="border-b border-ink bg-paper/50">
-                              <th className="p-4 uppercase font-black tracking-widest border-r border-ink text-[10px]">
-                                Delegate Category
-                              </th>
-                              <th className="p-4 uppercase font-black tracking-widest text-[10px]">
-                                Register Fee
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-ink">
-                            {(() => {
-                              const tabFees = (activeTab.content && Array.isArray(activeTab.content.fees) && activeTab.content.fees.length > 0)
-                                ? activeTab.content.fees
-                                : extractRegistrationFees(event);
-                              if (!tabFees || tabFees.length === 0) {
-                                return (
-                                  <tr>
-                                    <td colSpan={2} className="p-4 text-center text-ink/50 italic font-mono text-[11px]">
-                                      Standard registration policies apply. Please consult the instructions below or RSVP desk.
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                              return tabFees.map((fee: any, idx: number) => (
-                                <tr key={idx} className="hover:bg-paper/50">
-                                  <td className="p-4 border-r border-ink font-bold">
-                                    {fee.category}
-                                  </td>
-                                  <td className="p-4 font-black text-brand-orange font-bold font-semibold">
-                                    {fee.fee}
-                                  </td>
-                                </tr>
-                              ));
-                            })()}
-                          </tbody>
-                        </table>
-                      </div>
-
-                      {activeTab.content.instructions && (
-                        <div className="p-6 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-                          <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/40 mb-4">
-                            Compliance Protocols & RSVP Guidelines
-                          </div>
-                          <ul className="list-disc pl-5 font-mono text-xs text-ink/75 space-y-2.5 uppercase tracking-wide leading-relaxed">
-                            {activeTab.content.instructions.map(
-                              (ins: any, idx: number) => (
-                                <li 
-                                  key={idx} 
-                                  className="font-semibold"
-                                  dangerouslySetInnerHTML={{ __html: renderMarkdown(ins) }}
-                                />
-                              ),
-                            )}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* type 5: lists / presenters cards layout */}
-                  {activeTab.type === "list" && (
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      {activeTab.content.map((pt: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-5 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] flex gap-4 items-start hover:bg-paper/30 transition-all text-left"
-                        >
-                          {resolvePersonImage(peopleList, pt.profileUrl || pt.name, pt.photoUrl || "") ? (
-                            <img
-                              src={resolvePersonImage(peopleList, pt.profileUrl || pt.name, pt.photoUrl || "")}
-                              alt={pt.name}
-                              className="w-16 h-16 object-cover border border-ink rounded-full shrink-0 shadow-[2px_2px_0px_rgba(0,0,0,1)] bg-zinc-100"
-                              referrerPolicy="no-referrer"
-                            />
-                          ) : (
-                            <div className="w-16 h-16 rounded-full border border-ink bg-paper/50 flex items-center justify-center font-mono text-zinc-400 text-lg font-black shrink-0">
-                              {pt.name.charAt(0)}
-                            </div>
-                          )}
-                          <div className="flex-1 min-w-0">
-                            {pt.profileUrl ? (
-                              <a
-                                href={pt.profileUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-serif text-lg font-black text-ink hover:text-brand-blue hover:underline leading-tight block mb-1"
-                              >
-                                {pt.name}
-                              </a>
-                            ) : (
-                              <h4 className="font-serif text-lg font-black text-ink leading-tight mb-1">
-                                {pt.name}
-                              </h4>
-                            )}
-                            {pt.affiliation && (
-                              <p className="font-mono text-[9px] text-zinc-500 uppercase font-black tracking-wider line-clamp-1 mb-2">
-                                {pt.affiliation}
-                              </p>
-                            )}
-                            {pt.role && (
-                              <span className="inline-block px-2.5 py-0.5 bg-brand-orange/10 text-brand-orange font-mono text-[8px] font-black uppercase tracking-wider border border-brand-orange/20 rounded">
-                                {pt.role}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* type 6: logistics */}
-                  {activeTab.type === "logistics" && (
-                    <div className="grid gap-6">
-                      {Array.isArray(activeTab.content)
-                        ? activeTab.content.map((log: any, idx: number) => (
-                            <div
-                              key={idx}
-                              className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] text-left"
-                            >
-                              <div className="font-mono text-[10px] font-black uppercase tracking-[0.25em] text-brand-orange mb-3 flex items-center justify-between border-b border-ink/10 pb-2">
-                                <span className="flex items-center gap-1.5 font-bold">
-                                  <MapPin className="w-3.5 h-3.5 text-brand-orange" />
-                                  {log.key} Directives
-                                </span>
-                                {log.link && (
-                                  <a
-                                    href={log.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-2.5 py-1 bg-brand-blue text-white font-mono text-[9px] font-black uppercase tracking-widest border border-ink hover:bg-black hover:shadow-none transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] shrink-0 inline-flex items-center gap-1"
-                                  >
-                                    📍 Google Map Location
-                                  </a>
-                                )}
-                              </div>
-                              <div
-                                className="prose prose-sm max-w-none text-ink/85 font-serif text-sm md:text-base leading-relaxed"
-                                dangerouslySetInnerHTML={{
-                                  __html: renderMarkdown(log.value || ""),
-                                }}
-                              />
-                            </div>
-                          ))
-                        : Object.entries(activeTab.content).map(
-                            ([key, value]: any) => (
-                              <div
-                                key={key}
-                                className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] text-left"
-                              >
-                                <div className="font-mono text-[10px] font-black uppercase tracking-[0.25em] text-brand-orange mb-3 flex items-center gap-1.5 border-b border-ink/10 pb-2">
-                                  <MapPin className="w-3.5 h-3.5 text-brand-orange" />
-                                  {key} Directives
-                                </div>
-                                <div
-                                  className="prose prose-sm max-w-none text-ink/85 font-serif text-sm md:text-base leading-relaxed"
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderMarkdown(value || ""),
-                                  }}
-                                />
-                              </div>
-                            ),
-                          )}
-                    </div>
-                  )}
-
-                  {/* type 7: committees */}
-                  {activeTab.type === "committees" && (
-                    <div className="grid gap-8">
-                      {activeTab.content.map((c: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] overflow-hidden animate-fade-in text-left"
-                        >
-                          <div className="text-xs font-mono font-black uppercase tracking-[0.2em] p-4 bg-ink text-paper flex items-center gap-2">
-                            <Users className="w-4 h-4 text-brand-acid" />
-                            {c.name}
-                          </div>
-                          <div className="p-6 grid sm:grid-cols-2 gap-6 bg-paper/10">
-                            {(c.members || []).map(
-                              (member: any, mIdx: number) => (
-                                <div
-                                  key={mIdx}
-                                  className="p-4 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-4 items-start hover:bg-paper/30 transition-all text-left"
-                                >
-                                  {resolvePersonImage(peopleList, member.profileUrl || member.name, member.photoUrl || "") ? (
-                                    <img
-                                      src={resolvePersonImage(peopleList, member.profileUrl || member.name, member.photoUrl || "")}
-                                      alt={member.name}
-                                      className="w-12 h-12 object-cover border border-ink rounded-full shrink-0 shadow-[1.5px_1.5px_0px_rgba(0,0,0,1)] bg-zinc-100"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  ) : (
-                                    <div className="w-12 h-12 rounded-full border border-ink bg-zinc-50 flex items-center justify-center font-mono text-zinc-400 text-sm font-black shrink-0">
-                                      {member.name.charAt(0)}
-                                    </div>
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    {member.profileUrl ? (
-                                      <a
-                                        href={member.profileUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="font-serif text-sm font-black text-ink hover:text-brand-blue hover:underline leading-tight block mb-0.5"
-                                      >
-                                        {member.name}
-                                      </a>
-                                    ) : (
-                                      <h5 className="font-serif text-sm font-black text-ink leading-tight mb-0.5">
-                                        {member.name}
-                                      </h5>
-                                    )}
-                                    {member.affiliation && (
-                                      <p className="font-mono text-[8px] text-zinc-500 uppercase tracking-wide line-clamp-1 mb-1.5">
-                                        {member.affiliation}
-                                      </p>
-                                    )}
-                                    <span className="inline-block bg-brand-acid/20 text-ink font-mono text-[8px] font-black uppercase border border-ink/20 px-2 py-0.2 rounded font-semibold">
-                                      {member.role || "Member"}
-                                    </span>
-                                  </div>
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* type 8: contact */}
-                  {activeTab.type === "contact" && (
-                    <div className="grid sm:grid-cols-2 gap-6">
-                      {activeTab.content.map((cont: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] flex flex-col justify-between group hover:bg-brand-acid/10 transition-all font-bold"
-                        >
-                          <div>
-                            <div className="font-mono text-[10px] font-black uppercase text-brand-blue bg-brand-blue/10 px-2.5 py-1 inline-block border border-brand-blue/20 mb-4 font-bold">
-                              {cont.designation}
-                            </div>
-                            <h4 className="font-serif text-xl font-black mb-1 text-ink font-bold">
-                              {cont.name}
-                            </h4>
-                          </div>
-                          <div className="mt-6 border-t border-ink/10 pt-4 space-y-2 font-mono text-[11px] font-semibold">
-                            <div className="flex items-center gap-2">
-                              <span className="text-ink/40">EMAIL:</span>
-                              <a
-                                href={`mailto:${cont.email}`}
-                                className="text-brand-blue hover:underline text-xs"
-                              >
-                                {cont.email}
-                              </a>
-                            </div>
-                            {cont.phone && (
-                              <div className="flex items-center gap-2">
-                                <span className="text-ink/40">PHONE:</span>
-                                <span className="text-ink font-bold">
-                                  {cont.phone}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* type 9: Courseware and Session materials player (Requirement 8) */}
+  const publicSectionTypes=['markdown','dates','schedule','registration','list','logistics','committees','contact','course_overview'];
+  const renderPublicSection=(section:any)=>{
+    let content=section.content;
+    const portrait=(entry:any)=>{
+      const slug=entry.staffSlug||String(entry.profileUrl||'').split('/people/')[1]?.split(/[?#]/)[0]?.replace(/\/$/,'');
+      const current=peopleList.find(p=>p.slug===slug)||peopleList.find(p=>[p.name,p.fullName].some(name=>name&&name.toLowerCase()===String(entry.name||'').toLowerCase()));
+      return {...entry,name:current?.fullName||current?.name||entry.name,photoUrl:current?.image||entry.photoUrl,profileUrl:current?`/people/${current.slug}`:entry.profileUrl};
+    };
+    if(section.type==='registration')content={...content,fees:content?.fees?.length?content.fees:extractRegistrationFees(event)};
+    if(section.type==='list'&&Array.isArray(content))content=content.map(portrait);
+    if(section.type==='committees'&&Array.isArray(content))content=content.map(group=>({...group,members:group.members?.map(portrait)}));
+    return <RecordContent section={{...section,content}}/>;
+  };
+  const renderRecordSection = (activeTab:any) => (<div className="event-chapter-content">
+    {publicSectionTypes.includes(activeTab.type)&&renderPublicSection(activeTab)}
                   {/*
                   {activeTab.type === 'custom_materials' && (
                     <div className="space-y-8 animate-fade-in">
@@ -2385,14 +1378,14 @@ export default function EventDetail() {
                             Instructor Panel: Incorporate New Module / Session Folder
                           </h4>
                           <div className="space-y-4">
-                            <input 
-                              type="text" 
+                            <input
+                              type="text"
                               placeholder="Session Title (e.g. Session 1: Ethical NLP Architectures)"
                               className="w-full p-3 border border-ink bg-white font-mono text-xs focus:outline-none"
                               value={newSessionTitle}
                               onChange={e => setNewSessionTitle(e.target.value)}
                             />
-                            <textarea 
+                            <textarea
                               placeholder="Session Folder Description..."
                               rows={2}
                               className="w-full p-3 border border-ink bg-white font-mono text-xs focus:outline-none"
@@ -3092,63 +2085,20 @@ export default function EventDetail() {
                       </div>
                     </div>
                   )}
-                </div>
-              </div>
+                </div>);
 
-              {/* Reference GUID */}
-              <div className="mt-12 flex flex-wrap justify-between items-center gap-6 border-t border-ink/15 pt-8 font-bold">
-                <div className="font-mono text-[9px] font-bold text-ink/40 uppercase tracking-widest">
-                  DOCUMENT REFERENCE // GUID: CO-DIN-{event.slug.toUpperCase()}
-                </div>
-                <Link
-                  to="/events"
-                  className="font-mono text-[10px] font-black uppercase tracking-widest text-brand-blue hover:underline flex items-center gap-1 group"
-                >
-                  &larr; Return to Central Schedules
-                </Link>
-              </div>
-            </div>
+const registrationWindow=registrationAvailability(event,effectiveMyStatus?.accepted?effectiveMyStatus.participant:undefined,now);
+const participationActions=eventParticipationActions({record:event,status:getEffectiveStatus(event,now),registration:effectiveMyStatus,materialsAccess:learningAccess.allowed,now});
+const renderParticipationAction = () => {
+  const query=new URLSearchParams(searchParams),registration=tabsList.find(t=>t.type==='registration');
+  query.set('section',registration?.slug||'registration');if(query.has('tab'))query.set('tab',registration?.slug||'registration');
+  return <ParticipationActions actions={participationActions} registrationHref={`?${query}`} materialsHref={learningHref(event.slug,event.isCourse||isResidentialCourse(event)?'course':'event',searchParams.get('from')||undefined)} onEnroll={handleEnrollMaterials} enrolling={enrollingMaterials}/>;
+};
 
-            {/* Sticky "Secure Your Spot" Widget Sidebar - 4 Cols */}
-            <div className="lg:col-span-4 lg:sticky lg:top-24 space-y-8 text-left">
+const renderParticipation = () => (<section className="event-participation" aria-label="Your registration"><h3>Your registration</h3><div className="record-registration-sidebar space-y-8 text-left">
               {/* Conditional Notification/Dashboard checkout card (Requirement 1, 3, 4) */}
               {effectiveMyStatus?.accepted &&
-              effectiveMyStatus.participant?.admissionStatus === "Confirmed" ? (
-                <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card">
-                  <div>
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-acid text-ink font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
-                      <ShieldCheck
-                        className="w-4 h-4 text-ink"
-                        strokeWidth={3}
-                      />{" "}
-                      LMS PORTAL: ACCESS GRANTED
-                    </div>
-                    <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white">
-                      Course Materials Active
-                    </h3>
-                    <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
-                      NAME:{" "}
-                      <span className="font-semibold text-brand-acid">
-                        {effectiveMyStatus.participant.name}
-                      </span>{" "}
-                      <br />
-                      AFFILIATION:{" "}
-                      <span className="font-semibold text-brand-acid">
-                        {effectiveMyStatus.participant.affiliation}
-                      </span>
-                    </p>
-
-                    <button
-                      onClick={() => {
-                        navigate(`/academy/online/${event.slug}`);
-                      }}
-                      className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink"
-                    >
-                      View Materials 📚
-                    </button>
-                  </div>
-                </div>
-              ) : effectiveMyStatus?.accepted ? (
+              learningAccess.allowed ? null : effectiveMyStatus?.accepted ? (
                 effectiveMyStatus.participant?.paymentStatus === "Confirmed" ? (
                   <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in">
                     <div>
@@ -3235,7 +2185,7 @@ export default function EventDetail() {
                         </div>
 
                         {/* Implement custom instructions message chosen from DB config */}
-                        {event.registrationCard?.paymentMsgChoice === "link" &&
+                        {!registrationWindow.allowed ? <p role="status">{registrationWindow.reason}</p> : event.registrationCard?.paymentMsgChoice === "link" &&
                         event.registrationCard?.paymentGatewayLink ? (
                           <div className="space-y-4">
                             <p className="text-xs text-paper/80 leading-relaxed font-sans">
@@ -3375,72 +2325,7 @@ export default function EventDetail() {
                   </div>
 
                   <div>
-                    {event.registrationCard?.buttonLink &&
-                    event.registrationCard?.buttonLink !== "#" ? (
-                      <a
-                        href={event.registrationCard?.buttonLink}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="w-full h-16 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.2)] flex items-center justify-center border border-ink font-bold hover:no-underline"
-                      >
-                        {event.registrationCard?.buttonText ||
-                          "Link To Portal &rarr;"}
-                      </a>
-                    ) : isCompletedCourse ? (
-                      event.completedFee !== undefined && event.completedFee > 0 ? (
-                        <button
-                          onClick={handleEnrollMaterials}
-                          disabled={enrollingMaterials}
-                          className="w-full h-16 bg-brand-acid text-ink flex items-center justify-center gap-3 font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:text-ink transition-all active:scale-95 shadow-[6px_6px_0px_rgba(255,255,255,0.2)] hover:shadow-none hover:translate-y-1 hover:translate-x-1 cursor-pointer font-bold border border-ink font-bold"
-                        >
-                          <Shield className="w-4 h-4" />{" "}
-                          {enrollingMaterials
-                            ? "Processing Gateway..."
-                            : `Pay ₹${event.completedFee} & Get Access`}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={handleEnrollMaterials}
-                          disabled={enrollingMaterials}
-                          className="w-full h-16 bg-brand-acid text-ink flex items-center justify-center gap-3 font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:text-ink transition-all active:scale-95 shadow-[6px_6px_0px_rgba(255,255,255,0.2)] hover:shadow-none hover:translate-y-1 hover:translate-x-1 cursor-pointer font-bold border border-ink font-bold"
-                        >
-                          <Shield className="w-4 h-4" />{" "}
-                          {enrollingMaterials
-                            ? "Enrolling..."
-                            : "Enroll & Get Access (Free)"}
-                        </button>
-                      )
-                    ) : event.status === "Upcoming" ||
-                      event.status === "Ongoing" ? (
-                      <button
-                        onClick={() => {
-                          const regTab = tabsList.find((t) => t.type === "registration");
-                          if (regTab) {
-                            setActiveTabSlug(regTab.slug);
-                          }
-                          const el =
-                            document.getElementById("tabs-navigation") ||
-                            document.querySelector(".tabs-navbar-parent");
-                          if (el) {
-                            el.scrollIntoView({ behavior: "smooth" });
-                          } else {
-                            window.scrollTo({ top: 400, behavior: "smooth" });
-                          }
-                        }}
-                        className="w-full h-16 bg-brand-acid text-ink flex items-center justify-center gap-3 font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:text-ink transition-all active:scale-95 shadow-[6px_6px_0px_rgba(255,255,255,0.2)] hover:shadow-none hover:translate-y-1 hover:translate-x-1 cursor-pointer font-bold border border-ink font-bold"
-                      >
-                        <Lock className="w-4 h-4" />{" "}
-                        {event.registrationCard?.buttonText ||
-                          (event.type === "W2M Residential Course" ||
-                          event.type === "Residential"
-                            ? "Apply for Admission"
-                            : "Go to submission portal")}
-                      </button>
-                    ) : (
-                      <button className="w-full h-16 border border-white/20 text-white/30 font-mono font-black uppercase tracking-widest text-xs cursor-not-allowed font-bold">
-                        Admissions closed
-                      </button>
-                    )}
+                    {renderParticipationAction()}
 
                     <div className="mt-8 pt-8 border-t border-white/10">
                       <h5 className="font-mono text-[9px] font-black uppercase tracking-widest opacity-40 mb-4 text-white font-bold">
@@ -3558,171 +2443,275 @@ export default function EventDetail() {
                   </>
                 )}
               </div>
+            </div></section>);
+return (
+    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure record-page">
+      <div className="max-w-[1600px] mx-auto">
+        {/* Helper custom alert message */}
+        {searchParams.get("alertMsg") && (
+          <div className="mb-8 p-5 border border-brand-orange bg-brand-orange/5 text-brand-orange font-mono text-xs font-bold uppercase tracking-widest flex items-center justify-between gap-4 animate-fade-in shadow-[4px_4px_0px_rgba(0,0,0,1)]">
+            <div className="flex items-center gap-3">
+              <span className="text-sm">⚠️</span>
+              <span>{searchParams.get("alertMsg")}</span>
+            </div>
+            <button
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("alertMsg");
+                navigate(url.pathname + url.search, { replace: true });
+              }}
+              className="text-[10px] underline uppercase hover:text-ink cursor-pointer font-black"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Course Simulation Dashboard */}
+        {(isOrganizer ||
+          searchParams.get("simulate") === "unenrolled" ||
+          searchParams.get("simulate") === "enrolled") && (
+          <div className="mb-12 p-6 border-2 border-dashed border-brand-orange bg-brand-orange/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 shadow-[4px_4px_0px_rgba(0,0,0,1)] animate-fade-in">
+            <div className="max-w-2xl text-left">
+              <h4 className="font-mono text-xs font-black uppercase tracking-widest text-brand-orange flex items-center gap-2">
+                ⚠️ COURSE SIMULATOR SYSTEM: INSTRUCTOR PLAYGROUND
+              </h4>
+              <p className="text-[10px] text-ink/75 font-mono mt-2 leading-relaxed uppercase">
+                You are previewing this residency course iteration as an authorized instructor/organizer. Toggle the interactive simulator controls below to review the student onboarding pipeline.
+              </p>
+            </div>
+            <div className="flex gap-4 shrink-0">
+              <button
+                onClick={() => {
+                  setSimulateEnrolled(false);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("simulate", "unenrolled");
+                  navigate(url.pathname + url.search, { replace: true });
+                }}
+                className={`h-11 px-6 border border-ink font-mono text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                  !simulateEnrolled
+                    ? "bg-brand-orange text-white shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px]"
+                    : "bg-paper hover:bg-brand-orange/10 text-ink"
+                }`}
+              >
+                Unenrolled Preview
+              </button>
+              <button
+                onClick={() => {
+                  setSimulateEnrolled(true);
+                  const url = new URL(window.location.href);
+                  url.searchParams.set("simulate", "enrolled");
+                  navigate(url.pathname + url.search, { replace: true });
+                }}
+                className={`h-11 px-6 border border-ink font-mono text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+                  simulateEnrolled
+                    ? "bg-brand-orange text-white shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-[-1px] hover:translate-y-[-1px]"
+                    : "bg-paper hover:bg-brand-orange/10 text-ink"
+                }`}
+              >
+                Simulated Enrolled View
+              </button>
             </div>
           </div>
+        )}
+
+        {/* Navigation Action Row */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-12 pb-6 border-b border-ink/10">
+          <Link
+            to={searchParams.get("from")==="academy"?"/academy/residential":"/events"}
+            className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] hover:text-brand-blue transition-colors group"
+          >
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            {searchParams.get("from")==="academy"?"Back to W2M Academy":"Back to Events Agenda"}
+          </Link>
+
+          {isOrganizer && (
+            <div className="flex gap-3 flex-wrap">
+              <button
+                onClick={handleEditEventClick}
+                className="h-10 px-5 border border-ink bg-brand-acid text-ink font-mono text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-ink hover:text-brand-acid transition-all cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] font-bold"
+              >
+                <Edit3 className="w-3.5 h-3.5" /> Edit Event
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmModal({
+                    isOpen: true,
+                    title: "Move Event to Trash",
+                    message: `Are you absolutely sure you want to move "${event.title}" to Trash? You can restore this event from Trash.`,
+                    confirmText: "Move to Trash",
+                    cancelText: "Cancel",
+                    isDangerous: true,
+                    onConfirm: async () => {
+                      try {
+                        const res = await fetch(
+                          getEventApiUrl(event._id || event.slug),
+                          {
+                            method: "DELETE",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${token}`,
+                            },
+                          },
+                        );
+                        const data = await res.json();
+                        if (data.success) {
+                          alert("Success! Event moved to Trash.");
+                          window.location.href = "/events";
+                        } else {
+                          alert(
+                            "Deletion failure: " +
+                              (data.error || "Permission denied"),
+                          );
+                        }
+                      } catch (err) {
+                        console.error(err);
+                        alert(
+                          "Error connecting to backend delete route: " +
+                            String(err),
+                        );
+                      } finally {
+                        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+                      }
+                    },
+                  });
+                }}
+                className="h-10 px-5 border border-ink bg-white hover:bg-brand-orange hover:text-white text-ink font-mono text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all cursor-pointer shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-[3px] hover:translate-y-[3px] font-bold"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-brand-orange hover:text-white" />{" "}
+                Delete Event
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Supporting Contexts: Host Bios & Projects Splicing (Full Width grids) */}
-        <div className="grid lg:grid-cols-12 gap-16 mt-24 border-t border-ink pt-20">
-          {/* Associated Projects (8 Columns) */}
-          <div className="lg:col-span-8 space-y-8 text-left">
-            {associatedProjects.length > 0 && (
-              <div>
-                <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2">
-                  <span className="w-12 h-[1px] bg-ink/20" />
-                  Affiliated Experimental Projects
-                </div>
-                <div className="grid gap-6">
-                  {associatedProjects.map((p) => (
-                    <Link
-                      key={p.slug}
-                      to={`/projects/${p.slug}`}
-                      className="p-8 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:bg-ink hover:text-paper group transition-all duration-300 hover:no-underline"
-                    >
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="font-mono text-[9px] font-black border border-current px-2.5 py-0.5 font-bold">
-                          {p.id}
-                        </div>
-                        <div className="font-mono text-[9px] font-bold uppercase tracking-widest bg-brand-acid text-ink px-2 py-0.5 shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                          {p.tag}
-                        </div>
-                      </div>
-                      <h3 className="font-serif text-3xl font-black mb-4 group-hover:text-brand-acid transition-colors font-bold">
-                        {p.title}
-                      </h3>
-                      <p className="text-sm font-medium opacity-70 group-hover:opacity-100 mb-6 leading-relaxed">
-                        {p.description}
-                      </p>
-                      <div className="flex items-center justify-between font-mono text-[10px] font-black uppercase tracking-wider">
-                        <span>Status: {p.status}</span>
-                        <span className="flex items-center gap-1 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform">
-                          Explore Project <ArrowUpRight className="w-4 h-4" />
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </div>
+        {/* Hero Area */}
+        <div className="record-summary-composition"><div className="record-summary-heading"><EventHeading record={event} kind={event.isCourse||isResidentialCourse(event)?"course":"event"} actions={renderParticipationAction()}/></div><div className="record-cover"><div className="relative aspect-[16/10] lg:aspect-square border border-ink shadow-[20px_20px_0px_var(--color-brand-orange)] overflow-hidden bg-white group/banner">
+            <RecordImage src={event.image} alt={event.title} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"/>
+            {isOrganizer && (
+              <div className="absolute inset-0 bg-ink/75 opacity-0 group-hover/banner:opacity-100 transition-opacity flex flex-col justify-center items-center gap-4 p-6 z-10 font-mono text-xs">
+                <p className="text-white uppercase font-black tracking-wider text-[11px]">
+                  Banner Photograph Controls
+                </p>
+                <label className="px-4 py-2 border border-white bg-brand-orange text-white text-xs uppercase tracking-widest cursor-pointer shadow-[3px_3px_0px_rgba(255,255,255,1)] hover:bg-black font-black font-bold">
+                  {isUploadingCloudinary
+                    ? "Uploading Photo..."
+                    : "Replace Photo 📷"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingCloudinary}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const reader = new FileReader();
+                      reader.onloadend = async () => {
+                        const dataUrl = reader.result as string;
+                        const cloudUrl = await uploadToCloudinary({ dataUrl });
+                        if (cloudUrl) {
+                          try {
+                            const res = await fetch(
+                              getEventApiUrl(event._id || event.slug),
+                              {
+                                method: "PUT",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${token}`,
+                                },
+                                body: JSON.stringify({
+                                  ...event,
+                                  image: cloudUrl,
+                                }),
+                              },
+                            );
+                            if (res.ok) {
+                              alert(
+                                "Success! Photograph uploaded & updated on system database.",
+                              );
+                              loadEventAndStatus();
+                            } else {
+                              alert(
+                                "Photograph could not be synced to the database.",
+                              );
+                            }
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }
+                      };
+                      reader.readAsDataURL(file);
+                    }}
+                  />
+                </label>
+                <button
+                  onClick={() => {
+                    setConfirmModal({
+                      isOpen: true,
+                      title: "Move Event to Trash",
+                      message: `Are you absolutely sure you want to move "${event.title}" to Trash? You can restore this event from Trash.`,
+                      confirmText: "Move to Trash",
+                      cancelText: "Cancel",
+                      isDangerous: true,
+                      onConfirm: async () => {
+                        try {
+                          const res = await fetch(
+                            getEventApiUrl(event._id || event.slug),
+                            {
+                              method: "DELETE",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${token}`,
+                              },
+                            },
+                          );
+                          const data = await res.json();
+                          if (data.success) {
+                            alert(
+                              "Success! Event moved to Trash.",
+                            );
+                            window.location.href = "/events";
+                          } else {
+                            alert(
+                              "Deletion failure: " +
+                                (data.error || "Permission denied"),
+                            );
+                          }
+                        } catch (err) {
+                          console.error(err);
+                          alert(
+                            "Error connecting inside overlay: " + String(err),
+                          );
+                        }
+                      },
+                    });
+                  }}
+                  className="px-4 py-2 border border-white bg-red-600 text-white text-xs uppercase tracking-widest shadow-[3px_3px_0px_rgba(255,255,255,1)] hover:bg-black font-black font-bold"
+                >
+                  Delete Event 🗑️
+                </button>
               </div>
             )}
+            <div className="absolute top-4 right-4 bg-paper p-6 border border-ink shadow-[8px_8px_0px_rgba(0,0,0,1)]">
+              <Zap className="w-12 h-12 text-ink opacity-20" />
+            </div>
+          </div></div></div>
+
+        <details className="record-intro-details"><summary>{event.isCourse||isResidentialCourse(event)?"About this course":"About this event"}</summary><div className="markdown-content" dangerouslySetInnerHTML={{__html:renderMarkdown(event.longDescription || event.description || "")}}/></details>
+
+        {/* Interactive Customizable Sub-Pages & Tabs Grid */}
+        <div className="border-t border-ink pt-16">
+          <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/40 mb-10 flex items-center gap-2">
+            <span className="w-12 h-[1px] bg-ink/20" />
+            Explore this event
           </div>
 
-          {/* Organiser Bios / Cards (4 Columns) -> Replaced with Collaborators & Sponsors */}
-          <div className="lg:col-span-4 space-y-12 text-left">
-            {/* Collaborators section */}
-            {event?.collaborators && event.collaborators.length > 0 && (
-              <div className="space-y-6">
-                <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-brand-blue font-bold">
-                  Event Collaborators
-                </div>
-                <div className="grid gap-4 animate-fade-in animate-duration-500">
-                  {event.collaborators.map((col: any, idx: number) => {
-                    const CardComponent = col.website ? "a" : "div";
-                    return (
-                      <CardComponent
-                        key={idx}
-                        {...(col.website
-                          ? {
-                              href: col.website,
-                              target: "_blank",
-                              rel: "noopener noreferrer",
-                            }
-                          : {})}
-                        className={`p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] transition-all flex gap-4 items-center group text-ink font-bold ${
-                          col.website
-                            ? "hover:bg-brand-acid hover:-translate-y-1 hover:shadow-[10px_10px_0px_rgba(0,0,0,1)] hover:no-underline"
-                            : ""
-                        }`}
-                      >
-                        {col.logo ? (
-                          <img
-                            src={col.logo}
-                            alt={col.name}
-                            className="w-16 h-16 object-contain border border-ink p-1 bg-white shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-16 h-16 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                            CO
-                          </div>
-                        )}
-                        <div className="space-y-1 overflow-hidden">
-                          <h4 className="font-serif text-lg font-black leading-tight truncate">
-                            {col.name}
-                          </h4>
-                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight">
-                            Collaborating Organisation
-                          </p>
-                          {col.website && (
-                            <p className="font-mono text-[9px] text-brand-blue font-bold group-hover:underline">
-                              Visit Website &rarr;
-                            </p>
-                          )}
-                        </div>
-                      </CardComponent>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Sponsors section */}
-            {event?.sponsors && event.sponsors.length > 0 && (
-              <div className="space-y-6">
-                <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-brand-orange font-bold">
-                  Event Sponsors
-                </div>
-                <div className="grid gap-4 animate-fade-in animate-duration-500">
-                  {event.sponsors.map((spo: any, idx: number) => {
-                    const CardComponent = spo.website ? "a" : "div";
-                    return (
-                      <CardComponent
-                        key={idx}
-                        {...(spo.website
-                          ? {
-                              href: spo.website,
-                              target: "_blank",
-                              rel: "noopener noreferrer",
-                            }
-                          : {})}
-                        className={`p-6 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] transition-all flex gap-4 items-center group text-ink font-bold ${
-                          spo.website
-                            ? "hover:bg-brand-acid hover:-translate-y-1 hover:shadow-[10px_10px_0px_rgba(0,0,0,1)] hover:no-underline"
-                            : ""
-                        }`}
-                      >
-                        {spo.logo ? (
-                          <img
-                            src={spo.logo}
-                            alt={spo.name}
-                            className="w-16 h-16 object-contain border border-ink p-1 bg-white shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                        ) : (
-                          <div className="w-16 h-16 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                            SP
-                          </div>
-                        )}
-                        <div className="space-y-1 overflow-hidden">
-                          <h4 className="font-serif text-lg font-black leading-tight truncate">
-                            {spo.name}
-                          </h4>
-                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight">
-                            Official Sponsor
-                          </p>
-                          {spo.website && (
-                            <p className="font-mono text-[9px] text-brand-orange font-bold group-hover:underline">
-                              Visit Website &rarr;
-                            </p>
-                          )}
-                        </div>
-                      </CardComponent>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
+          <RecordExperience key={event.slug} title={event.title} sections={[...tabsList,{slug:'writing-media',title:'Writing & media',type:'writing'}]} activeSection={activeTabSlug} onActiveSectionChange={setActiveTabSlug} renderSection={section=>section.type==='writing'?<ConnectedWriting type="event" slug={event.slug}/>:<>{renderRecordSection(section)}{section.type==='registration'&&renderParticipation()}</>} glance={<RecordGlance record={event} kind={event.isCourse||isResidentialCourse(event)?"course":"event"} actions={renderParticipationAction()}/>}/>
         </div>
+
+        {associatedProjects.length>0&&<section className="dossier-subsection"><h2>Connected projects</h2><ConnectedRecords items={associatedProjects} family="projects"/></section>}
+
       </div>
 
       {/* SUPERADMIN/ORGANIZER EDITING MODAL */}

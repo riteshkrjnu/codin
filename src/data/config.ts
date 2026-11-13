@@ -23,7 +23,6 @@ export const navigation: NavItem[] = [
   {
     label: "W2M Academy",
     children: [
-      { label: "Overview", href: "/academy", description: "Linguistics, Tech, and Data Annotation training." },
       { label: "Residential Courses", href: "/academy/residential", description: "Unique offline field methods for speech tech." },
       { label: "Online Courses", href: "/academy/online", description: "Upcoming live online specialized courses." },
       { label: "Custom Courses", href: "/academy/custom", description: "Bespoke workshops and curated training programs." },

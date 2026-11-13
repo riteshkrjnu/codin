@@ -1,3 +1,12 @@
+import ConnectedWriting from '../features/writing/ConnectedWriting';
+import { ProjectChapter } from '../site/layout/DossierContent';
+import RecordImage from '../site/layout/RecordImage';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance from '../site/layout/RecordGlance';
+import { getEffectiveStatus, getProjectStatus } from '../lib/courseStatus';
+import { useLifecycleNow } from '../lib/lifecycleClock';
+import RecordHeading from '../site/layout/RecordHeading';
+import ActivityUpdates from './ActivityUpdates';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -91,6 +100,7 @@ function MarkdownHelperBar({ textareaId, value, onChange }: { textareaId: string
 }
 
 export default function ProjectDetail() {
+  const now=useLifecycleNow();
   const { slug } = useParams();
   const { user } = useAuth();
   const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
@@ -395,31 +405,34 @@ export default function ProjectDetail() {
   const Icon = getIcon(project.slug) || Zap;
 
   // Get associated events dynamically
-  const associatedEvents = dynamicEvents.filter(e => e.associatedProjects?.includes(project.slug) && !e.deleted && e.status !== 'Trash');
+  const associatedEvents = dynamicEvents.map(e=>({...e,status:getEffectiveStatus(e,now)})).filter(e => e.associatedProjects?.includes(project.slug) && !e.deleted && e.status !== 'Trash');
 
   // Compile tabs list dynamically following CDI specifications and custom requirements
   const tabsList = [
     {
       slug: 'overview',
-      title: 'Strategic Overview',
+      title: 'Purpose & overview',
+      preview: project.description,
       icon: 'Info',
       type: 'custom'
     },
     {
       slug: 'methodology',
       title: 'Methodology',
+      preview: project.methodology,
       icon: 'BookOpen',
       type: 'custom'
     },
     {
       slug: 'aims',
       title: 'Project Aims',
+      preview: project.aims?.join(' · '),
       icon: 'Zap',
       type: 'custom'
     },
     {
       slug: 'staff',
-      title: 'Project Staffs & Roles',
+      title: 'Team & opportunities',
       icon: 'Users',
       type: 'custom'
     },
@@ -560,10 +573,12 @@ export default function ProjectDetail() {
     setModalSubPages(copy);
   };
 
-  return (
-    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure">
+  const renderRecordSection = (section: any) => <ProjectChapter section={section} record={project} people={dynamicPeople} events={associatedEvents} onApply={position=>{setApplyingPosition(position);setIsApplyModalOpen(true);}}/>;
+
+return (
+    <div className="min-h-screen bg-paper pt-32 pb-24 px-6 lg:px-12 grid-structure record-page">
       <div className="max-w-[1600px] mx-auto">
-        
+
         {/* Back Link & Admin Settings Bar */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-12 border-b border-ink/15 pb-6">
           <Link to="/" className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] hover:text-brand-blue transition-colors group">
@@ -582,47 +597,8 @@ export default function ProjectDetail() {
         </div>
 
         {/* Hero Section */}
-        <div className="grid lg:grid-cols-2 gap-24 items-end mb-20 animate-fade-in animate-duration-500">
-          <div>
-            <div className="flex items-center gap-4 mb-8">
-              <div className="font-mono text-[10px] font-bold border border-ink px-3 py-1 bg-white select-none">
-                {project.id}
-              </div>
-              <div className={`px-4 py-1 text-[10px] font-mono font-black uppercase tracking-widest ${project.color || 'bg-brand-acid'} text-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] select-none`}>
-                {project.tag}
-              </div>
-            </div>
-            
-            <h1 className="text-5xl md:text-7xl lg:text-8xl font-serif font-black leading-tight italic mb-8">
-              {project.title}
-            </h1>
-
-            <p className="font-serif text-2xl font-light italic leading-relaxed text-ink/80 max-w-xl">
-              {project.description}
-            </p>
-
-            {project.outputUrl && (
-              <div className="mt-8 flex">
-                <a
-                  href={project.outputUrl.trim().startsWith('http') ? project.outputUrl.trim() : `https://${project.outputUrl.trim()}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-6 py-3 bg-brand-blue text-white border border-ink font-mono text-[11px] font-bold uppercase tracking-wider hover:bg-brand-orange hover:translate-y-[-2px] transition-all shadow-[6px_6px_0px_rgba(0,0,0,1)] active:translate-y-0 active:shadow-none flex items-center gap-2 cursor-pointer font-black select-none text-white no-underline hover:text-white"
-                >
-                  <ArrowUpRight className="w-4 h-4" />
-                  {project.outputLabel && project.outputLabel.trim() ? project.outputLabel.trim() : 'Project Output Page / Repository'}
-                </a>
-              </div>
-            )}
-          </div>
-          
-          <div className="relative aspect-[4/3] lg:aspect-square border border-ink shadow-[20px_20px_0px_rgba(59,81,238,1)] overflow-hidden">
-            <img 
-              src={project.image || "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=1200"} 
-              alt={project.title} 
-              className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"
-              referrerPolicy="no-referrer"
-            />
+        <div className="record-summary-composition"><div className="record-summary-heading"><RecordHeading record={project} kind="project"/></div><div className="record-cover"><div className="relative aspect-[4/3] lg:aspect-square border border-ink shadow-[20px_20px_0px_rgba(59,81,238,1)] overflow-hidden">
+            <RecordImage src={project.image} alt={project.title} className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700"/>
             {isAdmin && (
               <label className="absolute bottom-4 left-4 bg-ink hover:bg-brand-blue text-white hover:text-white px-3 py-1.5 font-mono text-[9px] font-black uppercase tracking-wider border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] cursor-pointer z-30 transition-all flex items-center gap-1.5 uppercase select-none">
                 <Upload className="w-3.5 h-3.5 animate-pulse" />
@@ -653,870 +629,20 @@ export default function ProjectDetail() {
             <div className="absolute top-4 right-4 bg-paper p-6 border border-ink shadow-[8px_8px_0px_rgba(0,0,0,1)] select-none">
                <Icon className="w-12 h-12 text-ink opacity-20" />
             </div>
-          </div>
-        </div>
+          </div></div><div className="section-actions">{project.outputUrl&&<a className="action" href={project.outputUrl.startsWith("http")?project.outputUrl:`https://${project.outputUrl}`} target="_blank" rel="noreferrer">{project.outputLabel||"Project outputs & repository"} ↗</a>}</div></div>
 
         {/* Dynamic Dossier Tabs Grid */}
         <div className="border-t border-ink pt-16">
           <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2 select-none">
             <span className="w-12 h-[1px] bg-ink/20" />
-            Project Dossier Workspace
+            Explore this project
           </div>
 
-          <div className="grid lg:grid-cols-12 gap-16 items-start">
-            {/* Tab Controls Sidebar (lg:col-span-3) */}
-            <div className="lg:col-span-3 min-w-0 lg:sticky lg:top-24 space-y-6">
-              <div className="flex lg:flex-col gap-3 overflow-x-auto lg:overflow-x-visible pb-4 lg:pb-0 scrollbar-none">
-                {tabsList.map((tab) => {
-                  const TabIcon = getIcon(tab.icon || "Info");
-                  const isActive = activeTab.slug === tab.slug;
-                  return (
-                    <button
-                      key={tab.slug}
-                      onClick={() => setActiveTabSlug(tab.slug)}
-                      className={cn(
-                        "flex items-center gap-3.5 px-5 py-4 border text-left font-mono text-[10px] uppercase tracking-wider font-black transition-all shrink-0 lg:shrink select-none cursor-pointer",
-                        isActive 
-                          ? "bg-ink text-paper border-ink shadow-[4px_4px_0px_var(--color-brand-acid)]"
-                          : "bg-white hover:bg-brand-acid/15 border-ink/40 text-ink shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:border-ink hover:translate-x-0.5"
-                      )}
-                    >
-                      <TabIcon className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{tab.title}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Status Indicator Sidebar Box */}
-              <div className="p-6 bg-brand-orange text-paper border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] select-none">
-                <div className="font-mono text-[9px] font-black uppercase tracking-widest text-paper/70 mb-1">
-                  Project Phase Status
-                </div>
-                <div className="font-serif font-black text-2xl italic">
-                  {project.status || "Active Research"}
-                </div>
-                {project.year && (
-                  <div className="mt-3 border-t border-paper/10 pt-3">
-                    <div className="font-mono text-[9px] font-black uppercase tracking-widest text-paper/70 mb-1">
-                      Project Year / Timeline
-                    </div>
-                    <div className="font-mono text-[10px] font-bold">
-                      {project.year}
-                    </div>
-                  </div>
-                )}
-                {project.id && (
-                  <div className="mt-2 border-t border-paper/10 pt-2 font-mono text-[9px] font-bold text-paper/80">
-                    CODE: {project.id}
-                  </div>
-                )}
-              </div>
-
-              {/* Funding Agencies Card */}
-              {((project.fundingAgencies && project.fundingAgencies.length > 0) || project.fundingAgency) && (
-                <div className="space-y-3 select-none">
-                  <div className="flex items-center gap-2">
-                    <Landmark className="w-3.5 h-3.5 text-brand-orange" />
-                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-brand-orange font-bold">
-                      Funding Agencies
-                    </span>
-                  </div>
-                  <div className="grid gap-3 animate-fade-in">
-                    {project.fundingAgencies && project.fundingAgencies.length > 0 ? (
-                      project.fundingAgencies.map((agency: any, idx: number) => {
-                        const CardComp = agency.website ? "a" : "div";
-                        return (
-                          <CardComp
-                            key={idx}
-                            {...(agency.website ? { href: agency.website, target: "_blank", rel: "noopener noreferrer" } : {})}
-                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
-                              agency.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
-                            }`}
-                          >
-                            {agency.logo ? (
-                              <img
-                                src={agency.logo}
-                                alt={agency.name}
-                                className="w-11 h-11 object-contain border border-ink p-1 bg-white shrink-0"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                                FA
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                              <h4 
-                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                                title={agency.name}
-                              >
-                                {agency.name}
-                              </h4>
-                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
-                                {agency.role || "Funding Agency"}
-                              </p>
-                              {agency.website && (
-                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
-                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
-                                </p>
-                              )}
-                            </div>
-                          </CardComp>
-                        );
-                      })
-                    ) : (
-                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
-                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                          FA
-                        </div>
-                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                          <h4 
-                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                            title={project.fundingAgency}
-                          >
-                            {project.fundingAgency}
-                          </h4>
-                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Primary Funding Agency</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Supporting Agencies Card */}
-              {((project.supportingAgencies && project.supportingAgencies.length > 0) || (!project.fundingAgencies?.length && project.collaboratingAgency && !project.collaborators?.length)) && (
-                <div className="space-y-3 select-none">
-                  <div className="flex items-center gap-2">
-                    <Landmark className="w-3.5 h-3.5 text-brand-blue" />
-                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-brand-blue font-bold">
-                      Supporting Agencies
-                    </span>
-                  </div>
-                  <div className="grid gap-3 animate-fade-in">
-                    {project.supportingAgencies && project.supportingAgencies.length > 0 ? (
-                      project.supportingAgencies.map((agency: any, idx: number) => {
-                        const CardComp = agency.website ? "a" : "div";
-                        return (
-                          <CardComp
-                            key={idx}
-                            {...(agency.website ? { href: agency.website, target: "_blank", rel: "noopener noreferrer" } : {})}
-                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
-                              agency.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
-                            }`}
-                          >
-                            {agency.logo ? (
-                              <img
-                                src={agency.logo}
-                                alt={agency.name}
-                                className="w-11 h-11 object-contain border border-ink p-1 bg-white shrink-0"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                                SA
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                              <h4 
-                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                                title={agency.name}
-                              >
-                                {agency.name}
-                              </h4>
-                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
-                                {agency.role || "Supporting Agency"}
-                              </p>
-                              {agency.website && (
-                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
-                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
-                                </p>
-                              )}
-                            </div>
-                          </CardComp>
-                        );
-                      })
-                    ) : (
-                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
-                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                          SA
-                        </div>
-                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                          <h4 
-                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                            title={project.collaboratingAgency}
-                          >
-                            {project.collaboratingAgency}
-                          </h4>
-                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Supporting Agency</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Collaborators Card under Funding Agencies */}
-              {((project.collaborators && project.collaborators.length > 0) || (project.collaboratingAgency && !project.supportingAgencies?.length)) && (
-                <div className="space-y-3 select-none">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-3.5 h-3.5 text-ink" />
-                    <span className="text-[10px] font-mono font-black uppercase tracking-[0.25em] text-ink font-bold">
-                      Collaborating Partners
-                    </span>
-                  </div>
-                  <div className="grid gap-3 animate-fade-in">
-                    {project.collaborators && project.collaborators.length > 0 ? (
-                      project.collaborators.map((collab: any, idx: number) => {
-                        const CardComp = collab.website ? "a" : "div";
-                        return (
-                          <CardComp
-                            key={idx}
-                            {...(collab.website ? { href: collab.website, target: "_blank", rel: "noopener noreferrer" } : {})}
-                            className={`w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all flex gap-3 items-center group text-ink ${
-                              collab.website ? "hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:no-underline" : ""
-                            }`}
-                          >
-                            {collab.logo ? (
-                              <img
-                                src={collab.logo}
-                                alt={collab.name}
-                                className="w-11 h-11 object-cover border border-ink p-1 bg-white shrink-0"
-                                referrerPolicy="no-referrer"
-                              />
-                            ) : (
-                              <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                                CO
-                              </div>
-                            )}
-                            <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                              <h4 
-                                className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                                title={collab.name}
-                              >
-                                {collab.name}
-                              </h4>
-                              <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">
-                                {collab.role || "Collaborating Partner"}
-                              </p>
-                              {collab.website && (
-                                <p className="font-mono text-[8.5px] text-brand-blue font-bold group-hover:underline flex items-center gap-1 mt-0.5 truncate">
-                                  Visit Website <ArrowUpRight className="w-3 h-3 shrink-0" />
-                                </p>
-                              )}
-                            </div>
-                          </CardComp>
-                        );
-                      })
-                    ) : project.collaboratingAgency ? (
-                      <div className="w-full max-w-full min-w-0 overflow-hidden p-3.5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] flex gap-3 items-center">
-                        <div className="w-11 h-11 flex items-center justify-center border border-ink bg-zinc-100 font-mono text-xs text-ink/40 font-bold shrink-0">
-                          CO
-                        </div>
-                        <div className="min-w-0 flex-1 overflow-hidden space-y-0.5">
-                          <h4 
-                            className="font-serif text-sm font-black leading-snug break-words [overflow-wrap:anywhere] text-ink"
-                            title={project.collaboratingAgency}
-                          >
-                            {project.collaboratingAgency}
-                          </h4>
-                          <p className="font-mono text-[9px] font-bold uppercase tracking-wider text-ink/50 leading-tight truncate">Collaborating Agency</p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-
-              {/* Implementing Centres */}
-              {project.associatedCentres && project.associatedCentres.length > 0 && (
-                <div className="p-6 bg-white border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] space-y-4 select-none">
-                  <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/40">
-                    Implementing Centres
-                  </div>
-                  <div className="grid gap-3">
-                    {project.associatedCentres.map((centreSlug: string) => {
-                      const c = dynamicCentres.find(item => item.slug === centreSlug);
-                      return (
-                        <Link
-                          key={centreSlug}
-                          to={`/centres/${centreSlug}`}
-                          className="p-3 border border-ink bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-brand-acid text-ink hover:-translate-y-0.5 transition-all text-xs font-serif font-bold italic block text-left"
-                        >
-                          {c ? c.name : centreSlug} &rarr;
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Project Directors */}
-              {project.projectDirectors && project.projectDirectors.length > 0 && (
-                <div className="p-6 bg-white border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] space-y-4 select-none">
-                  <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/40">
-                    Project Directors
-                  </div>
-                  <div className="grid gap-3">
-                    {project.projectDirectors.map((directorSlug: string) => {
-                      const dir = dynamicPeople.find(member => member.slug === directorSlug);
-                      return (
-                        <Link
-                          key={directorSlug}
-                          to={`/people/${directorSlug}`}
-                          className="p-3 border border-ink bg-white shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-brand-acid text-ink hover:-translate-y-0.5 transition-all block text-left"
-                        >
-                          <div className="font-serif text-sm font-black mb-1">
-                            {dir ? dir.fullName || dir.name : directorSlug}
-                          </div>
-                          <div className="font-mono text-[8px] uppercase tracking-wide text-ink/50 font-bold">
-                            View Profile &rarr;
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Related/Additional Links */}
-              {project.relatedLinks && project.relatedLinks.length > 0 && (
-                <div className="p-6 bg-white border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] space-y-4 select-none">
-                  <div className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/40">
-                    Related Links
-                  </div>
-                  <div className="grid gap-2">
-                    {project.relatedLinks.map((link: any, idx: number) => (
-                      <a
-                        key={idx}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-3 border border-ink bg-white text-ink font-mono text-[9px] font-black uppercase tracking-wider shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:bg-brand-blue hover:text-white hover:translate-y-[-1px] transition-all flex items-center justify-between"
-                      >
-                        <span className="truncate">{link.name}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5 shrink-0" />
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Tab Display Panel (lg:col-span-9) */}
-            <div className="lg:col-span-9 min-w-0 p-8 md:p-12 border-2 border-ink bg-white shadow-[12px_12px_0px_rgba(0,0,0,1)] min-h-[480px]">
-              {/* Tab Header block */}
-              <div className="flex items-center gap-3.5 mb-10 pb-6 border-b border-ink/10 select-none">
-                <div className="p-3 bg-brand-acid text-ink border border-ink shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                  {(() => {
-                    const ActiveIcon = getIcon(activeTab.icon || 'Info');
-                    return <ActiveIcon className="w-5 h-5 text-ink" />;
-                  })()}
-                </div>
-                <div>
-                  <h2 className="font-serif text-3xl font-black text-ink uppercase leading-none">
-                    {activeTab.title}
-                  </h2>
-                  <p className="font-mono text-[9px] uppercase tracking-widest text-ink/40 font-bold mt-1">
-                    PROJECT DATA MODULE // SECTION {activeTab.slug.toUpperCase()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Tab content renderer following CDI specification layouts */}
-              <div className="animate-fade-in animate-duration-200">
-                
-                {/* Specific Tab OVERVIEW */}
-                {activeTab.slug === 'overview' && (
-                  <div className="space-y-12">
-                    <div>
-                    {/*
-                      // <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-6 flex items-center gap-2 select-none">
-                      //   <span className="w-12 h-[1px] bg-ink/20" />
-                      //   Executive Mission Summary
-                      // </div>
-                      */}
-                      <div 
-                        className="text-xl md:text-2xl font-light leading-relaxed font-serif text-ink/90 whitespace-pre-wrap markdown-content"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(project.longDescription || project.description || '') }}
-                      />
-                    </div>
-
-                    {/* Dynamic Multimedia contents */}
-                    {((project.overviewImages && project.overviewImages.length > 0) || 
-                      (project.overviewYoutubeLinks && project.overviewYoutubeLinks.length > 0)) && (
-                      <div className="space-y-8 border-t border-ink/10 pt-10">
-                      {/*
-                        // <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 flex items-center gap-2 select-none">
-                        //   <span className="w-12 h-[1px] bg-ink/20" />
-                        //   Overview Multimedia Showcase
-                        // </div>
-                        */}
-                        {project.overviewImages && project.overviewImages.length > 0 && (
-                          <div className="grid sm:grid-cols-2 gap-6">
-                            {project.overviewImages.map((img: string, i: number) => (
-                              <div key={i} className="border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] bg-paper overflow-hidden">
-                                <img src={img} alt={`Overview content media ${i + 1}`} className="w-full aspect-[16/10] object-cover grayscale hover:grayscale-0 transition-all duration-300" />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {project.overviewYoutubeLinks && project.overviewYoutubeLinks.length > 0 && (
-                          <div className="grid sm:grid-cols-2 gap-6">
-                            {project.overviewYoutubeLinks.map((link: string, i: number) => {
-                              const embedUrl = getYoutubeEmbedUrl(link);
-                              if (!embedUrl) return null;
-                              return (
-                                <div key={i} className="relative aspect-video border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] bg-black overflow-hidden">
-                                  <iframe
-                                    src={embedUrl}
-                                    title={`Overview Video ${i + 1}`}
-                                    frameBorder="0"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                    allowFullScreen
-                                    className="w-full h-full"
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {(project.impact || []).length > 0 && (
-                      <div>
-                        <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-6 flex items-center gap-2 select-none">
-                          <span className="w-12 h-[1px] bg-ink/20" />
-                          Outcome Matrix & Success Goals
-                        </div>
-                        <div className="grid md:grid-cols-2 gap-6">
-                          {project.impact.map((text: string, i: number) => (
-                            <div 
-                              key={i}
-                              className="p-6 border border-ink bg-paper/20 shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:bg-brand-acid/10 transition-all flex items-start gap-4"
-                            >
-                              <CheckCircle2 className="w-4 h-4 text-brand-blue shrink-0 mt-0.5" />
-                              <p className="font-mono text-[11px] font-bold uppercase tracking-tight leading-normal text-ink">
-                                {text}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Specific Tab METHODOLOGY */}
-                {activeTab.slug === 'methodology' && (
-                  <div className="space-y-12">
-                    <div>
-                    {/*
-                      // <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-4 flex items-center gap-2 select-none">
-                      //   <span className="w-12 h-[1px] bg-ink/20" />
-                      //   Technological & Field Architecture
-                      // </div>
-                      */}
-                      <div 
-                        className="text-xl md:text-2xl font-light leading-relaxed font-serif text-ink/90 whitespace-pre-wrap markdown-content"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(project.methodology || "No methodology parameters configured or updated yet in the database pipe.") }}
-                      />
-                    </div>
-
-                    {/* Dynamic Methodology Multimedia contents */}
-                    {((project.methodologyImages && project.methodologyImages.length > 0) || 
-                      (project.methodologyYoutubeLinks && project.methodologyYoutubeLinks.length > 0)) && (
-                      <div className="space-y-8 border-t border-ink/10 pt-10">
-                        <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 flex items-center gap-2 select-none">
-                          <span className="w-12 h-[1px] bg-ink/20" />
-                          Methodology Multimedia Showcase
-                        </div>
-                        
-                        {project.methodologyImages && project.methodologyImages.length > 0 && (
-                          <div className="grid sm:grid-cols-2 gap-6">
-                            {project.methodologyImages.map((img: string, i: number) => (
-                              <div key={i} className="border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] bg-paper overflow-hidden">
-                                <img src={img} alt={`Methodology content media ${i + 1}`} className="w-full aspect-[16/10] object-cover grayscale hover:grayscale-0 transition-all duration-300" />
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {project.methodologyYoutubeLinks && project.methodologyYoutubeLinks.length > 0 && (
-                          <div className="grid sm:grid-cols-2 gap-6">
-                            {project.methodologyYoutubeLinks.map((link: string, i: number) => {
-                              const embedUrl = getYoutubeEmbedUrl(link);
-                              if (!embedUrl) return null;
-                              return (
-                                <div key={i} className="relative aspect-video border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] bg-black overflow-hidden">
-                                  <iframe
-                                    src={embedUrl}
-                                    title={`Methodology Video ${i + 1}`}
-                                    frameBorder="0"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                    allowFullScreen
-                                    className="w-full h-full"
-                                  />
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Specific Tab PROJECT AIMS */}
-                {activeTab.slug === 'aims' && (
-                  <div className="space-y-6">
-                  {/*
-                    // <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-4 flex items-center gap-2 select-none">
-                    //   <span className="w-12 h-[1px] bg-ink/20" />
-                    //   Sovereignty Milestones & Strategic Targets
-                    // </div>
-                    */}
-                    <div className="grid sm:grid-cols-2 gap-4">
-                      {(project.aims || []).length > 0 ? (
-                        project.aims.map((aim: string, idx: number) => (
-                          <div 
-                            key={idx}
-                            className="p-5 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:bg-brand-acid transition-all flex items-center gap-3 font-mono text-[10px] font-bold uppercase tracking-widest"
-                          >
-                            <ArrowUpRight className="w-4 h-4 text-brand-orange shrink-0" />
-                            {aim}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-xs font-mono text-ink/40 uppercase">No strategic aims specified.</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Specific Tab STAFFS & CAREERS */}
-                {activeTab.slug === 'staff' && (
-                  <div className="space-y-16">
-                    
-                    {/* Project Directors / Leadership */}
-                    <div>
-                      <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2 select-none">
-                        <span className="w-12 h-[1px] bg-ink/20" />
-                        Project Leadership &amp; Directors
-                      </div>
-                      
-                      {dynamicPeople.filter(m => (project.projectDirectors || []).includes(m.slug)).length > 0 ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                          {dynamicPeople.filter(m => (project.projectDirectors || []).includes(m.slug)).map((person) => (
-                            <Link 
-                              key={person.slug}
-                              to={`/people/${person.slug}`}
-                              className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:shadow-[14px_14px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex flex-col group h-full justify-between"
-                            >
-                              {/* Header photograph area */}
-                              <div className="relative h-64 bg-ink/5 border-b border-ink overflow-hidden shrink-0">
-                                <img
-                                  src={person.image || "https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&q=80&w=600"}
-                                  alt={person.fullName}
-                                  className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 object-top"
-                                  referrerPolicy="no-referrer"
-                                />
-                                <div className="absolute top-4 right-4 bg-brand-acid text-ink border border-ink font-mono text-[8px] font-black tracking-widest uppercase px-2 py-0.5 shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none">
-                                  COUNCIL LEADERSHIP
-                                </div>
-                              </div>
-
-                              {/* Meta info area */}
-                              <div className="p-6 flex-grow flex flex-col justify-between text-left">
-                                <div className="space-y-4">
-                                  {/* Designation */}
-                                  <div className="font-mono text-[9px] font-bold text-brand-orange uppercase tracking-wider leading-none">
-                                    {person.role || "Project Director"}
-                                  </div>
-                                  {/* Name */}
-                                  <h3 className="serif font-black text-2xl group-hover:text-brand-blue tracking-tight transition-colors">
-                                    {person.fullName || person.name}
-                                  </h3>
-                                  {/* Brief Snippet from bio */}
-                                  {person.bio && (
-                                    <p className="font-serif text-sm italic text-ink/70 leading-relaxed line-clamp-3">
-                                      {person.bio}
-                                    </p>
-                                  )}
-                                </div>
-                                <div className="font-mono text-[10px] font-black uppercase text-brand-blue hover:text-brand-orange tracking-widest mt-6 border-t border-ink/10 pt-4 flex items-center justify-between">
-                                  <span>Review Dossier &rarr;</span>
-                                </div>
-                              </div>
-                            </Link>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="p-6 text-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/40 uppercase bg-paper/20 select-none">
-                          No Directors assigned to this research node.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Project Staff & Computational Specialists */}
-                    <div>
-                      <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-8 flex items-center gap-2 select-none">
-                        <span className="w-12 h-[1px] bg-ink/20" />
-                        Computational Researchers &amp; Field Staff
-                      </div>
-
-                      {(project.projectStaffs || []).length > 0 ? (
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-                          {(project.projectStaffs || []).map((staffSlug: string) => {
-                            const matched = dynamicPeople.find(m => m.slug === staffSlug);
-                            const person = matched || (staffSlug.includes('(') ? {
-                              slug: staffSlug,
-                              name: staffSlug.split('(')[0].trim(),
-                              fullName: staffSlug.split('(')[0].trim(),
-                              role: staffSlug.split('(')[1].replace(')', '').trim(),
-                              image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=400",
-                              bio: "External Fieldwork Contributor specialized in tribal documentation workflows.",
-                              isExternal: true
-                            } : {
-                              slug: staffSlug,
-                              name: staffSlug,
-                              fullName: staffSlug,
-                              role: "Project Researcher",
-                              image: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&q=80&w=400",
-                              bio: "Research Affiliate associated with direct fieldwork streams.",
-                              isExternal: true
-                            });
-
-                            return (
-                              <div 
-                                key={person.slug}
-                                className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:shadow-[14px_14px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all flex flex-col group h-full justify-between"
-                              >
-                                {/* Header photograph area */}
-                                <div className="relative h-64 bg-ink/5 border-b border-ink overflow-hidden shrink-0">
-                                  <img
-                                    src={person.image || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400"}
-                                    alt={person.fullName}
-                                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700 object-top"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                  <div className="absolute top-4 right-4 bg-brand-acid text-ink border border-ink font-mono text-[8px] font-black tracking-widest uppercase px-2 py-0.5 shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none">
-                                    {(person as any).isExternal ? "EXTERNAL ASSOCIATE" : "COORDINATOR STAFF"}
-                                  </div>
-                                </div>
-
-                                {/* Meta info area */}
-                                <div className="p-6 flex-grow flex flex-col justify-between text-left">
-                                  <div className="space-y-4">
-                                    {/* Designation */}
-                                    <div className="font-mono text-[9px] font-bold text-brand-orange uppercase tracking-wider leading-none">
-                                      {person.role}
-                                    </div>
-                                    {/* Name */}
-                                    <h3 className="serif font-black text-2xl group-hover:text-brand-blue tracking-tight transition-colors">
-                                      {person.fullName || person.name}
-                                    </h3>
-                                    {/* Brief Snippet from bio */}
-                                    {person.bio && (
-                                      <p className="font-serif text-sm italic text-ink/70 leading-relaxed line-clamp-3">
-                                        {person.bio}
-                                      </p>
-                                    )}
-                                  </div>
-                                  
-                                  {!(person as any).isExternal && (
-                                    <Link 
-                                      to={`/people/${person.slug}`}
-                                      className="font-mono text-[10px] font-black uppercase text-brand-blue hover:text-brand-orange tracking-widest mt-6 border-t border-ink/10 pt-4 flex items-center justify-between"
-                                    >
-                                      <span>Review Dossier &rarr;</span>
-                                    </Link>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="p-6 text-center border border-dashed border-ink/30 font-mono text-[10px] text-ink/40 uppercase bg-paper/20 select-none">
-                          No personnel assigned to this computational block.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Careers and Recruitment Advertising */}
-                    <div>
-                      <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-6 flex items-center gap-2 select-none">
-                        <span className="w-12 h-[1px] bg-ink/20" />
-                        ADVERTISED ROLES // CAREER CHANNELS
-                      </div>
-                      
-                      <div className="grid gap-6">
-                        {(project.openPositions || []).length > 0 ? (
-                          project.openPositions.map((opp: any, idx: number) => (
-                            <div 
-                              key={idx}
-                              className="p-6 border-2 border-brand-orange bg-brand-acid/10 shadow-[6px_6px_0px_rgba(0,0,0,1)] relative overflow-hidden"
-                            >
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
-                                <h4 className="font-serif text-xl font-black">{opp.title}</h4>
-                                <span className="font-mono text-[9px] font-black uppercase tracking-widest text-brand-orange border border-brand-orange/40 px-2.5 py-0.5 bg-white shrink-0 self-start sm:self-center">
-                                  Submit by: {opp.deadline || 'Closed'}
-                                </span>
-                              </div>
-                              <p className="font-mono text-[11px] text-ink/70 leading-relaxed mb-6 uppercase tracking-tighter">
-                                {opp.description}
-                              </p>
-                              <div className="flex justify-end gap-3 flex-wrap">
-                                {opp.applyLink && (
-                                  <a 
-                                    href={opp.applyLink}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-4 py-2 border border-ink bg-white text-ink font-mono text-[9px] font-black uppercase tracking-widest hover:bg-brand-acid transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none cursor-pointer"
-                                  >
-                                    View Job Specification Decal ↗
-                                  </a>
-                                )}
-                                <button 
-                                  type="button" 
-                                  onClick={() => {
-                                    setApplyingPosition(opp);
-                                    setIsApplyModalOpen(true);
-                                  }}
-                                  className="px-4 py-2 bg-ink text-paper font-mono text-[9px] font-black uppercase tracking-widest hover:bg-brand-blue hover:text-white transition-all shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none cursor-pointer"
-                                >
-                                  Apply Internally via CoDIN &rarr;
-                                </button>
-                              </div>
-                            </div>
-                          ))
-                        ) : (
-                          <div className="p-8 border border-dashed border-ink/40 text-center bg-paper/20 select-none">
-                            <p className="font-mono text-xs text-ink/40 uppercase tracking-widest">
-                              No career vacancies are currently advertised within this project stream.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                  </div>
-                )}
-
-                {/* Specific Tab RELATED EVENTS */}
-                {(activeTab.slug === 'events' || activeTab.type === 'events') && (
-                  <div className="space-y-6">
-                  {/*
-                    // <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-4 flex items-center gap-2 select-none">
-                    //   <span className="w-12 h-[1px] bg-ink/20" />
-                    //   Academic Summits & Local Archiving Pipelines
-                    // </div>
-                    */}
-                    {associatedEvents.length > 0 ? (
-                      <div className="grid gap-6">
-                        {associatedEvents.map((e) => (
-                          <Link
-                            key={e.slug}
-                            to={`/events/${e.slug}`}
-                            className="p-6 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:bg-brand-blue hover:text-white hover:-translate-y-1 transition-all text-ink flex flex-col md:flex-row md:items-center justify-between"
-                          >
-                            <div className="space-y-1.5">
-                              <div className="flex flex-wrap items-center gap-2 text-[9px] font-mono font-bold uppercase tracking-wider text-ink/50 leading-none">
-                                <span className="border border-current px-1.5 py-0.5 bg-paper text-ink leading-none">
-                                  {e.type}
-                                </span>
-                                <span>{e.dates}</span>
-                              </div>
-                              <h4 className="font-serif text-xl font-black">{e.title}</h4>
-                            </div>
-                            <ArrowUpRight className="w-4 h-4 text-brand-blue shrink-0 mt-3 md:mt-0" />
-                          </Link>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="p-12 text-center border border-dashed border-ink/40 bg-paper/30 font-mono text-xs text-ink/50 uppercase select-none">
-                        Events Coming Soon
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Sub-Pages Renderer (Types Markdown and List) */}
-                {activeTab.type === 'markdown' && activeTab.slug !== 'events' && (
-                  <div className="space-y-6">
-                    {(activeTab as any).content?.teaser && (
-                      <p className="font-serif text-2xl italic leading-relaxed text-ink/80 border-l-4 border-brand-orange pl-6 mb-8 uppercase tracking-tight">
-                        {(activeTab as any).content.teaser}
-                      </p>
-                    )}
-                    <div 
-                      className="prose max-w-none text-ink text-sm leading-relaxed whitespace-pre-wrap font-sans tracking-tight bg-paper/50 p-6 border border-ink shadow-[4px_4px_0px_rgba(0,0,0,1)] markdown-content text-left"
-                      dangerouslySetInnerHTML={{ __html: renderMarkdown((activeTab as any).content?.markdown || '') }}
-                    />
-                  </div>
-                )}
-
-                {activeTab.type === 'list' && activeTab.slug !== 'events' && (
-                  <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] divide-y divide-ink">
-                    {(activeTab as any).content?.map((pt: any, idx: number) => (
-                      <div key={idx} className="p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 hover:bg-paper">
-                        <div className="flex items-center gap-4">
-                          {pt.photoUrl && (
-                            <img 
-                              src={pt.photoUrl} 
-                              alt={pt.name} 
-                              className="w-12 h-12 object-cover border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] bg-paper shrink-0" 
-                              referrerPolicy="no-referrer"
-                            />
-                          )}
-                          <div className="space-y-1">
-                            {pt.url ? (
-                              <a 
-                                href={pt.url} 
-                                target="_blank" 
-                                rel="noopener noreferrer" 
-                                className="font-serif text-xl font-black text-brand-blue uppercase hover:text-brand-orange hover:underline inline-flex items-center gap-1"
-                              >
-                                {pt.name} <span className="text-xs">🔗</span>
-                              </a>
-                            ) : (
-                              <h4 className="font-serif text-xl font-black text-ink">{pt.name}</h4>
-                            )}
-                            {pt.affiliation && (
-                              <p className="font-mono text-[9px] text-ink/50 uppercase font-black tracking-widest">
-                                {pt.affiliation}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <span className="px-3 py-1 bg-brand-orange text-white font-mono text-[9px] font-black uppercase tracking-widest border border-ink font-bold shrink-0">
-                          {pt.role}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-
-              </div>
-            </div>
-          </div>
+          <RecordExperience key={project.slug} title={project.title} sections={[...tabsList,{slug:'writing-media',title:'Writing & media',type:'writing'}]} activeSection={activeTabSlug} onActiveSectionChange={setActiveTabSlug} renderSection={section=>section.type==='writing'?<ConnectedWriting type="project" slug={project.slug}/>: renderRecordSection(section)} glance={<RecordGlance record={project} kind="project"/>}/>
         </div>
 
-        {/* CTA section */}
-        <div className="mt-32 pt-24 border-t border-ink flex flex-col items-center text-center select-none">
-            <h2 className="text-4xl md:text-5xl font-serif font-black italic mb-8">Collaborate with CoDIN on {project.title}</h2>
-            <a 
-               href="mailto:contact@diversity.org.in" 
-               className="h-16 px-10 bg-brand-blue text-paper flex items-center gap-4 font-mono font-black uppercase tracking-[0.2em] hover:bg-brand-orange hover:translate-y-[-4px] transition-all shadow-[10px_10px_0px_rgba(0,0,0,1)] active:shadow-none active:translate-y-0 text-white"
-            >
-              Contact Us &rarr;
-            </a>
-        </div>
+        <section className="dossier-contact"><div><h2>Work with this project</h2><p>Questions, collaboration or access to project outputs.</p></div><a className="action" href="mailto:contact@diversity.org.in">Contact CoDIN ↗</a></section>
+
       </div>
 
       {/* Unified Project CMS Modal */}
@@ -1686,6 +812,7 @@ export default function ProjectDetail() {
           </div>
         )}
       </AnimatePresence>
+      <ActivityUpdates kind="project" slug={project.slug} />
     </div>
   );
 }

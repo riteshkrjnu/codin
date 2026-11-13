@@ -69,7 +69,7 @@ export default function CertificationDetail() {
     return <div className="h-screen flex items-center justify-center font-mono uppercase tracking-widest text-ink/50">Certification not found.</div>;
   }
 
-  if (cert.status === 'Draft' && (!user || user.token !== cert.createdBy)) {
+  if (cert.status === 'Draft' && (!user || user.id !== cert.createdBy)) {
     return <div className="h-screen flex items-center justify-center font-mono uppercase tracking-widest text-ink/50">Certification is currently unavailable.</div>;
   }
 

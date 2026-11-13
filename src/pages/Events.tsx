@@ -1,3 +1,6 @@
+import { useLifecycleNow } from '../lib/lifecycleClock';
+import { Catalogue } from '../site/PublicPages';
+import { getEffectiveStatus } from '../lib/courseStatus';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -47,86 +50,11 @@ const formatEventDates = (startStr: string, endStr: string): string => {
   return `${sMonth} ${sDay}, ${sYear} - ${eMonth} ${eDay}, ${sYear}`;
 };
 
-const calculateEventStatus = (startStr: string, endStr: string): 'Upcoming' | 'Ongoing' | 'Archived' => {
-  if (!startStr) return 'Upcoming';
-  const start = new Date(startStr);
-  const end = endStr ? new Date(endStr) : new Date(startStr);
-  end.setHours(23, 59, 59, 999);
-  
-  const now = new Date();
-  if (now < start) {
-    return 'Upcoming';
-  } else if (now >= start && now <= end) {
-    return 'Ongoing';
-  } else {
-    return 'Archived';
-  }
-};
-
-const isEndDateInPast = (event: any): boolean => {
-  const now = new Date();
-  
-  // 1. If we have an explicit endDate, use it
-  if (event.endDate) {
-    const end = new Date(event.endDate);
-    end.setHours(23, 59, 59, 999);
-    return now > end;
-  }
-  
-  // 2. Otherwise parse it from event.dates string
-  if (event.dates) {
-    const datesStr = event.dates;
-    
-    try {
-      // Split by comma first to extract year and date part
-      const commaParts = datesStr.split(',');
-      if (commaParts.length >= 2) {
-        const yearStr = commaParts[commaParts.length - 1].trim(); // e.g. "2026"
-        const datePart = commaParts.slice(0, commaParts.length - 1).join(',').trim(); // e.g. "July 12 - July 14"
-        
-        // Check if there is a dash indicating range
-        if (datePart.includes('-')) {
-          const dashParts = datePart.split('-');
-          const endPart = dashParts[dashParts.length - 1].trim(); // e.g., "July 14" or "28"
-          
-          let endDateStr = '';
-          // If the endPart does not have a month name (e.g. "25" or "28"), extract month name from the startPart
-          if (/^\d+/.test(endPart)) {
-            const startPart = dashParts[0].trim(); // e.g. "May 18"
-            const match = startPart.match(/^([A-Za-z]+)/);
-            if (match) {
-              const month = match[1];
-              endDateStr = `${month} ${endPart} ${yearStr}`;
-            }
-          } else {
-            endDateStr = `${endPart} ${yearStr}`;
-          }
-          
-          if (endDateStr) {
-            const parsedEnd = new Date(endDateStr);
-            if (!isNaN(parsedEnd.getTime())) {
-              parsedEnd.setHours(23, 59, 59, 999);
-              return now > parsedEnd;
-            }
-          }
-        } else {
-          // No dash, single date: e.g. "July 12"
-          const parsedEnd = new Date(`${datePart} ${yearStr}`);
-          if (!isNaN(parsedEnd.getTime())) {
-            parsedEnd.setHours(23, 59, 59, 999);
-            return now > parsedEnd;
-          }
-        }
-      }
-    } catch (err) {
-      console.error("Failed to parse event dates:", datesStr, err);
-    }
-  }
-  
-  return false;
-};
+const calculateEventStatus = (startDate: string, endDate: string) => getEffectiveStatus({ status: 'Upcoming', startDate, endDate });
+const isEndDateInPast = (event: any) => getEffectiveStatus(event) === 'Completed';
 
 export default function Events() {
+  const now=useLifecycleNow();
   const { user } = useAuth();
   const token = user?.token;
 
@@ -363,8 +291,8 @@ export default function Events() {
     fetch('/api/centres')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          setDbCentres(data.filter(c => !c.deleted));
+        if (Array.isArray(data.centres)) {
+          setDbCentres(data.centres.filter(c => !c.deleted));
         }
       })
       .catch(err => console.error("Failed to fetch centres", err));
@@ -373,8 +301,8 @@ export default function Events() {
     fetch('/api/projects')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          setDbProjects(data);
+        if (Array.isArray(data.projects)) {
+          setDbProjects(data.projects);
         }
       })
       .catch(err => console.error("Failed to fetch projects", err));
@@ -383,8 +311,8 @@ export default function Events() {
     fetch('/api/people')
       .then(res => res.json())
       .then(data => {
-        if (Array.isArray(data)) {
-          setDbTeam(data.filter(p => !p.deleted));
+        if (Array.isArray(data.people)) {
+          setDbTeam(data.people.filter(p => !p.deleted));
         }
       })
       .catch(err => console.error("Failed to fetch people", err));
@@ -392,23 +320,8 @@ export default function Events() {
 
   // Merge static defaults with Dynamic loaded events. Avoid duplicate keys via slug.
   const allMergedEvents = useMemo(() => {
-    const list = [...dynamicEvents];
-    defaultEvents.forEach(se => {
-      if (!list.some(de => de.slug === se.slug)) {
-        list.push(se);
-      }
-    });
-    return list.map(e => {
-      // Respect explicit database / model status. Only fallback to date calculation if status is not set
-      if (!e.status && isEndDateInPast(e)) {
-        return {
-          ...e,
-          status: 'Archived' as const
-        };
-      }
-      return e;
-    });
-  }, [dynamicEvents]);
+    return dynamicEvents.map(e => ({ ...e, status: getEffectiveStatus(e,now) }));
+  }, [dynamicEvents,now]);
 
   // Auto-initialize default status tab: 'Ongoing' if ongoing events exist, otherwise 'Upcoming'
   useEffect(() => {
@@ -746,498 +659,16 @@ export default function Events() {
     }
   };
 
-  return (
-    <div className="pt-32 pb-24 grid-structure min-h-screen bg-paper">
-      <div className="max-w-[1600px] mx-auto px-6 lg:px-12">
-        
-        {/* Header Block with administrative buttons */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 mb-16">
-          <div className="max-w-4xl text-left">
-            <div className="inline-block px-4 py-1 border border-ink text-[10px] font-mono font-bold uppercase tracking-[0.3em] mb-4 bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)]">
-              CONVOCATIONS // SUMMITS // SPRINTS
-            </div>
-            <h1 className="text-6xl md:text-8xl font-serif font-black leading-none mb-8 italic text-left">
-              CoDIN <br />
-              <span className="text-outline text-brand-blue uppercase not-italic font-black">Schedules</span>
-            </h1>
-            <p className="font-serif text-2xl text-ink/75 leading-relaxed text-left">
-              Our centers continuously bring community members, field linguists, policy-makers, and computer scientists together to train them in building self-owned, soveregin AI models and datasets.
-            </p>
-          </div>
-
-          {/* Superadmin button if logged in */}
-          {user && (user.role === 'superadmin' || user.role === 'admin') && (
-            <div className="shrink-0">
-              <button
-                onClick={handleCreateNewClick}
-                className="h-14 px-8 bg-brand-orange text-white flex items-center gap-3 font-mono font-bold uppercase tracking-widest text-xs hover:bg-ink shadow-[6px_6px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] border border-ink cursor-pointer font-bold"
-              >
-                <Plus className="w-5 h-5 text-white" strokeWidth={3} />
-                Create New Event
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Filters Panel & Inputs */}
-        <div className="p-6 md:p-8 border-2 border-ink bg-white shadow-[8px_8px_0px_rgba(0,0,0,1)] mb-12">
-          <div className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-wider mb-6 text-ink/40">
-            <SlidersHorizontal className="w-4 h-4 text-ink" />
-            Bulletins Search & Filter Interface
-          </div>
-          
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8 text-left">
-            {/* Searchword input */}
-            <div className="flex flex-col gap-2">
-              <label className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/60">
-                Search Words
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="Topic, Host Name or Text..."
-                  className="w-full p-3 pl-10 border border-ink bg-paper/30 focus:outline-none focus:border-brand-blue font-mono text-xs focus:bg-white"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                <Search className="w-4 h-4 absolute left-3.5 top-3.5 text-ink/40" />
-              </div>
-            </div>
-
-            {/* Date Search Input */}
-            <div className="flex flex-col gap-2">
-              <label className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/60">
-                Filter by Date
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  placeholder="e.g. July 2026, Year, Month..."
-                  className="w-full p-3 pl-10 border border-ink bg-paper/30 focus:outline-none focus:border-brand-blue font-mono text-xs focus:bg-white"
-                  value={dateQuery}
-                  onChange={(e) => setDateQuery(e.target.value)}
-                />
-                <Calendar className="w-4 h-4 absolute left-3.5 top-3.5 text-ink/40" />
-              </div>
-            </div>
-
-            {/* Arbitrary Event Type Dropdown */}
-            <div className="flex flex-col gap-2">
-              <label className="font-mono text-[10px] font-black uppercase tracking-widest text-ink/60">
-                Event Category
-              </label>
-              <select
-                className="w-full p-3 border border-ink bg-paper/30 focus:outline-none focus:border-brand-blue font-mono text-xs uppercase font-bold appearance-none cursor-pointer focus:bg-white"
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-              >
-                <option value="all">ANY CONVOCATION TYPE</option>
-                {availableTypes.map(t => (
-                  <option key={t} value={t}>{t.toUpperCase()}S</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Reset Fields Button */}
-            <div className="flex flex-col justify-end">
-              <button
-                onClick={handleResetFilters}
-                className="w-full p-3 border border-ink bg-paper text-ink font-mono text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-brand-acid transition-colors shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-0.5 cursor-pointer font-bold"
-              >
-                <RefreshCw className="w-4 h-4 text-ink" />
-                Reset Active Filters
-              </button>
-            </div>
-          </div>
-
-          {/* Classification Status Tabs */}
-          <div className="border-t border-ink/10 pt-6 flex flex-wrap items-center justify-between gap-4 text-left">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="font-mono text-[9px] font-bold uppercase tracking-widest text-ink/40 mr-2 md:block hidden">
-                STATUS CLASSIFICATION:
-              </span>
-
-              <button
-                onClick={() => setStatusFilter('Upcoming')}
-                className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  statusFilter === 'Upcoming'
-                    ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                    : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                }`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-brand-orange inline-block" />
-                Upcoming ({allMergedEvents.filter(e => e.status === 'Upcoming' && !e.deleted).length})
-              </button>
-
-              <button
-                onClick={() => setStatusFilter('Ongoing')}
-                className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  statusFilter === 'Ongoing'
-                    ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                    : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                }`}
-              >
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-blue opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-brand-blue"></span>
-                </span>
-                Ongoing ({allMergedEvents.filter(e => e.status === 'Ongoing' && !e.deleted).length})
-              </button>
-
-              <button
-                onClick={() => setStatusFilter('Completed')}
-                className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  statusFilter === 'Completed'
-                    ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                    : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                }`}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 inline-block" />
-                Completed ({allMergedEvents.filter(e => e.status === 'Completed' && !e.deleted).length})
-              </button>
-
-              <button
-                onClick={() => setStatusFilter('Archived')}
-                className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                  statusFilter === 'Archived'
-                    ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                    : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                }`}
-              >
-                <Archive className="w-3.5 h-3.5 text-ink/40" />
-                Archived ({allMergedEvents.filter(e => e.status === 'Archived' && !e.deleted).length})
-              </button>
-
-              {user && (user.role === 'superadmin' || user.role === 'admin') && (
-                <>
-                  <button
-                    onClick={() => setStatusFilter('Draft')}
-                    className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer relative ${
-                      statusFilter === 'Draft'
-                        ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                        : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 bg-yellow-500 rounded-full inline-block" />
-                    Drafts ({allMergedEvents.filter(e => e.status === 'Draft' && !e.deleted).length})
-                  </button>
-
-                  <button
-                    onClick={() => setStatusFilter('Trash')}
-                    className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer ${
-                      statusFilter === 'Trash'
-                        ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                        : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                    }`}
-                  >
-                    <Trash2 className="w-3.5 h-3.5 text-brand-orange" />
-                    Trash ({allMergedEvents.filter(e => e.deleted).length})
-                  </button>
-                </>
-              )}
-
-              <button
-                onClick={() => setStatusFilter('all')}
-                className={`px-4 py-2 border border-ink font-mono text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                  statusFilter === 'all'
-                    ? 'bg-ink text-paper shadow-[3px_3px_0px_var(--color-brand-acid)]'
-                    : 'bg-paper hover:bg-brand-acid/20 text-ink'
-                }`}
-              >
-                All Active ({allMergedEvents.filter(e => !e.deleted).length})
-              </button>
-            </div>
-
-            <div className="font-mono text-[9px] font-black uppercase tracking-widest text-ink/50 bg-paper px-3 py-1 border border-ink border-dashed font-bold">
-              STATION SEARCH DATA: SHOWING {filteredEvents.length} OF {allMergedEvents.length} BULLETINS
-            </div>
-          </div>
-        </div>
-
-        {/* Events Grid */}
-        <div className="grid gap-12 text-left">
-          <AnimatePresence mode="popLayout">
-            {filteredEvents.length > 0 ? (
-              filteredEvents.map((event) => (
-                <motion.div
-                  key={event.slug}
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.4 }}
-                  className="p-8 md:p-12 border border-ink bg-white shadow-[8px_8px_0px_rgba(0,0,0,1)] hover:shadow-[14px_14px_0px_rgba(0,0,0,1)] transition-all flex flex-col xl:flex-row gap-12 font-bold"
-                >
-                  {/* Visual Thumbnail */}
-                  <div className="w-full xl:w-[400px] aspect-[16/10] xl:aspect-square border border-ink overflow-hidden shrink-0 relative bg-paper shadow-[6px_6px_0px_var(--color-brand-acid)] group">
-                    <img
-                      src={event.image}
-                      alt={event.title}
-                      className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700 font-bold"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute top-4 left-4 flex gap-1.5">
-                      <span className={`px-2.5 py-1 text-[8px] font-mono font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] ${
-                        event.status === 'Upcoming' ? 'bg-brand-orange text-white' :
-                        event.status === 'Ongoing' ? 'bg-brand-acid text-ink animate-pulse' :
-                        event.status === 'Completed' ? 'bg-emerald-600 text-white' :
-                        event.status === 'Draft' ? 'bg-amber-400 text-ink' :
-                        'bg-ink/10 text-ink/75 bg-paper'
-                      }`}>
-                        {event.status}
-                      </span>
-                    </div>
-
-                    <div className="absolute top-4 right-4">
-                      <span className="px-2.5 py-1 text-[8px] font-mono font-black uppercase tracking-wider border border-ink bg-white text-ink shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                        {getResolvedEventFee(event).display}
-                      </span>
-                    </div>
-
-                    <div className="absolute bottom-4 left-4 bg-paper border border-ink px-3 py-1 font-mono text-[9px] font-black uppercase tracking-wider text-ink font-semibold">
-                      {event.type}
-                    </div>
-                  </div>
-
-                  {/* Event Metadata */}
-                  <div className="flex-grow flex flex-col justify-between">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-6 mb-6 font-mono text-xs font-bold uppercase tracking-wider text-ink/60">
-                        <span className="flex items-center gap-2">
-                          <Calendar className="w-4 h-4 text-brand-orange" />
-                          {event.dates}
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4 text-brand-blue" />
-                          {event.location}
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <Coins className="w-4 h-4 text-brand-orange" />
-                          {getResolvedEventFee(event).display}
-                        </span>
-                      </div>
-
-                      <h2 className="font-serif text-3xl md:text-4xl font-black mb-4 hover:text-brand-blue transition-colors leading-tight font-bold">
-                        <Link to={`/events/${event.slug}${event.isCourse ? '?isCourse=true' : ''}`} className="hover:no-underline text-ink hover:text-brand-blue font-bold">
-                          {event.title}
-                        </Link>
-                      </h2>
-
-                      <div 
-                        className="font-mono text-xs text-ink/70 leading-relaxed mb-8 max-w-4xl font-semibold"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(event.description) }}
-                      />
-
-                      <div className="grid md:grid-cols-3 gap-6 border-t border-ink/10 pt-6 mt-6 text-left">
-                        {/* Connected Centres */}
-                        <div>
-                          <div className="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-ink/30 mb-3 flex items-center gap-1.5">
-                            <Landmark className="w-3.5 h-3.5 text-brand-orange" />
-                            Affiliated Centres
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {(event.associatedCentres || []).map((cSlug: string) => {
-                              const c = dbCentres.find(item => item.slug === cSlug);
-                              if (!c) return null;
-                              return (
-                                <Link
-                                  key={cSlug}
-                                  to={`/centres/${c.slug}`}
-                                  className="px-2.5 py-1 border border-ink text-[10px] font-mono font-bold uppercase tracking-wider bg-brand-acid/10 hover:bg-brand-acid text-ink transition-colors hover:no-underline font-semibold"
-                                >
-                                  {c.shortName}
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Connected Projects */}
-                        <div>
-                          <div className="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-ink/30 mb-3 flex items-center gap-1.5">
-                            <Briefcase className="w-3.5 h-3.5 text-brand-blue" />
-                            Linked Projects
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {(event.associatedProjects || []).map((pSlug: string) => {
-                              const p = dbProjects.find(item => item.slug === pSlug);
-                              if (!p) return null;
-                              return (
-                                <Link
-                                  key={pSlug}
-                                  to={`/projects/${p.slug}`}
-                                  className="px-2.5 py-1 border border-ink text-[10px] font-mono font-bold uppercase tracking-wider bg-brand-orange/10 hover:bg-brand-orange hover:text-white text-ink transition-all hover:no-underline font-semibold"
-                                >
-                                  {p.id}
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Connected People -> Replaced with Collaborators */}
-                        <div>
-                          <div className="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-ink/30 mb-3 flex items-center gap-1.5 font-bold">
-                            <Handshake className="w-3.5 h-3.5 text-brand-blue" strokeWidth={3} />
-                            Event Hosts
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            {event.collaborators && event.collaborators.length > 0 ? (
-                              event.collaborators.map((col: any, idx: number) => {
-                                const Content = col.logo ? (
-                                  <img 
-                                    src={col.logo} 
-                                    alt={col.name} 
-                                    title={col.name}
-                                    className="w-10 h-10 object-contain border border-ink p-1 bg-white hover:scale-105 transition-transform shrink-0"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : (
-                                  <span className="px-2 py-1 border border-ink text-[9px] font-mono font-bold uppercase tracking-wider bg-brand-blue/10 text-ink leading-tight shrink-0">
-                                    {col.name}
-                                  </span>
-                                );
-                                if (col.website) {
-                                  return (
-                                    <a 
-                                      key={idx} 
-                                      href={col.website} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer" 
-                                      className="inline-block hover:no-underline"
-                                    >
-                                      {Content}
-                                    </a>
-                                  );
-                                }
-                                return <div key={idx} className="inline-block">{Content}</div>;
-                              })
-                            ) : (
-                              <span className="text-[10px] font-mono text-ink/40">CoDIN Core Network</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Sponsors Section */}
-                        {event.sponsors && event.sponsors.length > 0 && (
-                          <div>
-                            <div className="text-[10px] font-mono font-black uppercase tracking-[0.2em] text-ink/30 mb-3 flex items-center gap-1.5 font-bold">
-                              <Coins className="w-3.5 h-3.5 text-brand-orange" strokeWidth={3} />
-                              Sponsors
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {event.sponsors.map((spo: any, idx: number) => {
-                                const Content = spo.logo ? (
-                                  <img 
-                                    src={spo.logo} 
-                                    alt={spo.name} 
-                                    title={spo.name}
-                                    className="w-10 h-10 object-contain border border-ink p-1 bg-white hover:scale-105 transition-transform shrink-0"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                ) : (
-                                  <span className="px-2 py-1 border border-ink text-[9px] font-mono font-bold uppercase tracking-wider bg-brand-orange/10 text-ink leading-tight shrink-0">
-                                    {spo.name}
-                                  </span>
-                                );
-                                if (spo.website) {
-                                  return (
-                                    <a 
-                                      key={idx} 
-                                      href={spo.website} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer" 
-                                      className="inline-block hover:no-underline"
-                                    >
-                                      {Content}
-                                    </a>
-                                  );
-                                }
-                                return <div key={idx} className="inline-block">{Content}</div>;
-                              })}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="mt-8 xl:mt-12 flex justify-end gap-3 flex-wrap">
-                      {user && (user.role === 'superadmin' || user.role === 'admin') && (
-                        <>
-                          {event.deleted ? (
-                            <>
-                              <button
-                                onClick={() => handleRetrieveEvent(event._id || event.slug, event.isCourse)}
-                                className="px-4 py-3.5 border border-ink bg-green-600 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-black hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 cursor-pointer font-bold"
-                              >
-                                <Check className="w-4 h-4 text-white" />
-                                Retrieve
-                              </button>
-                              <button
-                                onClick={() => handlePermanentDeleteEvent(event._id || event.slug, event.title, event.isCourse)}
-                                className="px-4 py-3.5 border border-ink bg-red-700 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-black hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 cursor-pointer font-bold"
-                              >
-                                <X className="w-1.5 h-1.5 transform scale-150 inline-block font-black" />
-                                Permanent Delete
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => handleEditEventClick(event)}
-                                className="px-4 py-3.5 border border-ink bg-brand-orange text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-black hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 cursor-pointer"
-                              >
-                                <Edit3 className="w-4 h-4 text-white" />
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleTrashEvent(event._id || event.slug, event.title, event.isCourse)}
-                                className="px-4 py-3.5 border border-ink bg-red-600 text-white font-mono text-xs font-bold uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-black hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 cursor-pointer"
-                              >
-                                <Trash2 className="w-4 h-4 text-white" />
-                                Delete
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-
-                      <Link
-                        to={`/events/${event.slug}${event.isCourse ? '?isCourse=true' : ''}`}
-                        className="px-4 py-3.5 border border-ink bg-white text-ink font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[5px_5px_0px_rgba(0,0,0,1)] transition-all flex items-center gap-2 group hover:no-underline font-bold"
-                      >
-                        Explore Event Docket
-                        <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                      </Link>
-                    </div>
-                  </div>
-                </motion.div>
-              ))
-            ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="p-12 border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] text-center max-w-2xl mx-auto flex flex-col items-center gap-4 border-2"
-              >
-                <AlertCircle className="w-12 h-12 text-brand-orange" />
-                <div>
-                  <h3 className="font-serif text-2xl font-black mb-2">No Matching Convocations</h3>
-                  <p className="font-mono text-xs text-ink/50 uppercase tracking-wider">
-                    We couldn't locate any events matching your selected filter variables or text search.
-                  </p>
-                </div>
-                <button
-                  onClick={handleResetFilters}
-                  className="px-4 py-2.5 border border-ink bg-brand-acid font-mono text-xs font-black uppercase tracking-wider shadow-[3px_3px_0px_rgba(0,0,0,1)] hover:translate-x-0.5 hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-all cursor-pointer font-bold"
-                >
-                  Clear All Search Inputs
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-
+  const canManage = user && ['admin','superadmin'].includes(user.role);
+  return <>
+    <Catalogue kind="events" controls={{ records: allMergedEvents.filter(e =>
+      (selectedType==='all'||e.type===selectedType) && (!dateQuery.trim()||String(e.dates||[e.startDate,e.endDate].join(' ')).toLowerCase().includes(dateQuery.toLowerCase()))),
+      includeUnpublished: !!canManage,
+      searchText: e => [e.location,e.type,...(e.associatedCentres||[]).map((slug:string)=>dbCentres.find(c=>c.slug===slug)?.name),...(e.associatedPeople||[]).map((slug:string)=>dbTeam.find(p=>p.slug===slug)?.name)].join(' '),
+      toolbar: canManage ? <div className="section-actions"><button className="action" onClick={handleCreateNewClick}>Create New Event</button></div> : undefined,
+      filters: <div className="advanced-filter-grid"><label>Dates<input placeholder="e.g. July 2026, Year, Month..." value={dateQuery} onChange={e=>setDateQuery(e.target.value)}/></label><label>Event category<select value={selectedType} onChange={e=>setSelectedType(e.target.value)}><option value="all">All event types</option>{availableTypes.map(type=><option key={type}>{type}</option>)}</select></label><button onClick={handleResetFilters}>Reset filters</button></div>,
+      actions: canManage ? event => event.deleted ? <><button onClick={()=>handleRetrieveEvent(event._id||event.slug,event.isCourse)}>Restore</button><button onClick={()=>handlePermanentDeleteEvent(event._id||event.slug,event.title,event.isCourse)}>Permanent Delete</button></> : <><button onClick={()=>handleEditEventClick(event)}>Edit</button><button onClick={()=>handleTrashEvent(event._id||event.slug,event.title,event.isCourse)}>Delete</button></> : undefined,
+    }}/>
             {/* SUPERADMIN CREATION MODAL (Consolidated to use unified EventFormModal from the same source) */}
       {showCreateModal && (
         <EventFormModal
@@ -1286,6 +717,5 @@ export default function Events() {
         </div>
       )}
 
-    </div>
-  );
+  </>;
 }

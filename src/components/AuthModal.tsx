@@ -1,13 +1,15 @@
+import { apiUrl } from '../lib/apiUrl';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { BrutalistLoader } from './Loader';
 
 export default function AuthModal() {
+  const oauthPopup = useRef<Window | null>(null);
   const { showModal, setShowModal, login } = useAuth();
   const [isSignUpMode, setIsSignUpMode] = useState(false);
   const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
@@ -178,60 +180,18 @@ export default function AuthModal() {
     setLoading(false);
   };
 
-  const handleGoogleSSO = async () => {
-    setLoading(true);
-    try {
-      const redirectUri = `${window.location.origin}/api/lms/auth/google/callback`;
-      const response = await fetch(`/api/lms/auth/google/url?redirectUri=${encodeURIComponent(redirectUri)}`);
-      if (!response.ok) {
-        throw new Error('Failed to get auth URL');
-      }
-      const { url } = await response.json();
-
-      const authWindow = window.open(
-        url,
-        'oauth_popup',
-        'width=600,height=700'
-      );
-
-      if (!authWindow) {
-        alert('Please allow popups for this site to connect your account.');
-      }
-    } catch (error) {
-      console.error('OAuth error:', error);
-    }
-    setLoading(false);
+  const startOAuth = (provider: 'google' | 'github') => {
+    setMessage('');
+    oauthPopup.current = window.open(apiUrl(`/api/lms/auth/${provider}/url?redirect=1`), 'oauth_popup', 'width=600,height=700');
+    if (!oauthPopup.current) setMessage('Allow popups to sign in with this provider.');
   };
-
-  const handleGitHubSSO = async () => {
-    setLoading(true);
-    try {
-      const redirectUri = `${window.location.origin}/api/lms/auth/github/callback`;
-      const response = await fetch(`/api/lms/auth/github/url?redirectUri=${encodeURIComponent(redirectUri)}`);
-      if (!response.ok) {
-        throw new Error('Failed to get auth URL');
-      }
-      const { url } = await response.json();
-
-      const authWindow = window.open(
-        url,
-        'oauth_popup',
-        'width=600,height=700'
-      );
-
-      if (!authWindow) {
-        alert('Please allow popups for this site to connect your account.');
-      }
-    } catch (error) {
-      console.error('OAuth error:', error);
-    }
-    setLoading(false);
-  };
+  const handleGoogleSSO = () => startOAuth('google');
+  const handleGitHubSSO = () => startOAuth('github');
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const origin = event.origin;
-      if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+      if (origin !== new URL(apiUrl('/api'), window.location.origin).origin || event.source !== oauthPopup.current) {
         return;
       }
       if (event.data?.type === 'OAUTH_AUTH_SUCCESS') {

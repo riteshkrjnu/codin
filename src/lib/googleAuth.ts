@@ -1,3 +1,4 @@
+import { apiUrl } from './apiUrl';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -75,7 +76,7 @@ export const signInWithGoogle = async (): Promise<{ accessToken: string; email: 
 
     const redirectIndicator = document.getElementById('google-redirect-indicator');
     if (redirectIndicator) {
-      redirectIndicator.innerText = window.location.origin + '/api/google-oauth-callback';
+      redirectIndicator.innerText = new URL(apiUrl('/api/google-oauth-callback'), window.location.origin).href;
     }
 
     const cleanup = () => {
@@ -144,7 +145,7 @@ export const signInWithGoogle = async (): Promise<{ accessToken: string; email: 
             client_id = '810054501192-clvsh6i0mca0sm4id2e6cl3h3ms9g2p8.apps.googleusercontent.com';
           }
 
-          const redirectUri = window.location.origin + '/api/google-oauth-callback';
+          const redirectUri = new URL(apiUrl('/api/google-oauth-callback'), window.location.origin).href;
           const scopes = [
             'email',
             'profile',
@@ -168,7 +169,7 @@ export const signInWithGoogle = async (): Promise<{ accessToken: string; email: 
 
           const handleAuthMessage = (event: MessageEvent) => {
             const origin = event.origin;
-            if (!origin.endsWith('.run.app') && !origin.includes('localhost') && !origin.includes('127.0.0.1')) {
+            if (origin !== new URL(apiUrl('/api'), window.location.origin).origin || event.source !== targetPopup) {
               return;
             }
 

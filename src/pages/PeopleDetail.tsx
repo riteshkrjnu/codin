@@ -1,3 +1,11 @@
+import PersonIntroduction from '../site/layout/PersonIntroduction';
+import { ConnectedRecords, PersonBackground } from '../site/layout/DossierContent';
+import RecordImage from '../site/layout/RecordImage';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance, { ProfileLinks } from '../site/layout/RecordGlance';
+import RecordHeading from '../site/layout/RecordHeading';
+import PublicationList from '../features/publications/PublicationList';
+import { normalizePublications } from '../features/publications/publications';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -6,7 +14,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { centres, projects, events } from "../data/config";
+import { useSiteData } from "../site/data";
 import { getUpdatedPeople, savePersonOverride } from "../lib/peopleOverrides";
 import { ProfileEditor } from "../components/ProfileEditor";
 import {
@@ -85,12 +93,14 @@ const DEFAULT_BANNER_IMAGES = [
 ];
 
 export default function PeopleDetail() {
+  const {data:{projects,centres,events}}=useSiteData();
   const { slug } = useParams();
   const { user } = useAuth();
 
   // Dynamic state for people list
   const [people, setPeople] = useState<Person[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedSlug,setLoadedSlug]=useState<string|undefined>();
   const [isEditing, setIsEditing] = useState(false);
   // Tab state for Publications, Courses and Events tabs (Requirement 3)
   const [activeViewTab, setActiveViewTab] = useState<"publications" | "courses" | "events">("publications");
@@ -247,6 +257,7 @@ export default function PeopleDetail() {
       setPeople(getUpdatedPeople());
     } finally {
       setLoading(false);
+      setLoadedSlug(slug);
     }
   };
 
@@ -390,7 +401,7 @@ export default function PeopleDetail() {
     if (person?.bannerImages && person.bannerImages.length > 0) {
       return person.bannerImages;
     }
-    return DEFAULT_BANNER_IMAGES;
+    return person?.image ? [person.image] : DEFAULT_BANNER_IMAGES;
   }, [person]);
 
   // Carousel actions
@@ -425,25 +436,25 @@ export default function PeopleDetail() {
     if (!person) return [];
     return projects.filter(
       (p) =>
-        p.projectDirectors.includes(person.slug) ||
+        p.projectDirectors?.includes(person.slug) ||
         p.projectStaffs?.includes(person.slug) ||
         (person as any).projects?.includes(p.slug),
     );
-  }, [person]);
+  }, [person,projects]);
 
   const affiliatedCentres = useMemo(() => {
     if (!person) return [];
     return centres.filter((c) =>
       person.centres?.includes(c.slug),
     );
-  }, [person]);
+  }, [person,centres]);
 
   const associatedEvents = useMemo(() => {
     if (!person) return [];
     return events.filter((e) =>
       e.associatedPeople?.includes(person.slug),
     );
-  }, [person]);
+  }, [person,events]);
 
   // Filter affiliated projects by active status
   const ongoingProjects = useMemo(() => {
@@ -456,69 +467,7 @@ export default function PeopleDetail() {
     return affiliatedProjects.filter((p) => p.status === "Completed");
   }, [affiliatedProjects]);
 
-  // Combine manual and Google Scholar synced publications with structured segregation
-  const unifiedPublications = useMemo(() => {
-    if (!person) return [];
-    const list: {
-      title: string;
-      year?: string;
-      citationCount?: number;
-      link?: string;
-      isScholarSynced: boolean;
-      isManualEntry: boolean;
-    }[] = [];
-
-    // 1. Map manual publications (which are plain strings)
-    const manualPubs = person.publications || [];
-    manualPubs.forEach((mp) => {
-      // Robust extraction of year (e.g., (2024))
-      const yearMatch = mp.match(/\((\d{4})\)/);
-      const year = yearMatch ? yearMatch[1] : undefined;
-      
-      // Robust extraction of citation count (e.g., [Citations: 15])
-      const citationMatch = mp.match(/\[Citations:\s*(\d+)\]/i);
-      const citationCount = citationMatch ? parseInt(citationMatch[1]) : undefined;
-      
-      // Clean bracket groups from the manual title
-      const cleanTitle = mp.replace(/\(\d{4}\)/g, "").replace(/\[Citations:\s*\d+\]/gi, "").trim();
-
-      list.push({
-        title: cleanTitle || mp,
-        year,
-        citationCount,
-        isScholarSynced: false,
-        isManualEntry: true,
-      });
-    });
-
-    // 2. Merge Google Scholar synced publications
-    if (scholarPubs && Array.isArray(scholarPubs)) {
-      scholarPubs.forEach((sp) => {
-        if (!sp || !sp.title) return;
-        const dupIdx = list.findIndex(
-          (item) => item.title.toLowerCase().trim() === sp.title.toLowerCase().trim()
-        );
-
-        if (dupIdx !== -1) {
-          list[dupIdx].isScholarSynced = true;
-          if (sp.link) list[dupIdx].link = sp.link;
-          if (sp.year) list[dupIdx].year = sp.year;
-          if (sp.citationCount !== undefined) list[dupIdx].citationCount = sp.citationCount;
-        } else {
-          list.push({
-            title: sp.title,
-            year: sp.year,
-            citationCount: sp.citationCount,
-            link: sp.link,
-            isScholarSynced: true,
-            isManualEntry: false,
-          });
-        }
-      });
-    }
-
-    return list;
-  }, [person, scholarPubs]);
+  const unifiedPublications = useMemo(() => normalizePublications(person?.publications, scholarPubs), [person, scholarPubs]);
 
   // Combine manual courses and actual DB courses
   const unifiedCourses = useMemo(() => {
@@ -542,13 +491,13 @@ export default function PeopleDetail() {
     // 2. Get from system courses inside allDbCourses (where person's email or slug is matching)
     allDbCourses.forEach(c => {
       const isInstructor = c.instructors?.some((inst: any) => 
-        (inst.user?.token === person.slug || inst.user?._id === person.slug || inst._id === person.slug)
+        (inst.user?.id === person.slug || inst.user?._id === person.slug || inst._id === person.slug)
       ) || c.instructors?.some((inst: any) => 
         (inst.user?.email?.toLowerCase() === person.email?.toLowerCase())
       );
       
       const isTa = c.tas?.some((t: any) => 
-        (t.user?.token === person.slug || t.user?._id === person.slug || t._id === person.slug)
+        (t.user?.id === person.slug || t.user?._id === person.slug || t._id === person.slug)
       ) || c.tas?.some((t: any) => 
         (t.user?.email?.toLowerCase() === person.email?.toLowerCase())
       );
@@ -684,6 +633,8 @@ export default function PeopleDetail() {
       fetchRealDriveFiles(driveSimSearch);
     }
   }, [isDriveSimOpen, driveSimSearch]);
+
+  if (!person && (loading || loadedSlug!==slug)) return <p className="loading-state" role="status">Loading profile…</p>;
 
   if (!person) {
     return (
@@ -987,7 +938,7 @@ export default function PeopleDetail() {
       education: editEducation,
       experience: editExperience,
       boardMemberType: editBoardMemberType,
-      publications: editPublicationsText
+      publications: editPublicationsText === (person.publications || []).join("\n") ? person.publications : editPublicationsText
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean),
@@ -1085,7 +1036,24 @@ export default function PeopleDetail() {
     },
   ];
 
-  return (
+  const personSections = [
+    {slug:'publications',title:'Publications',preview:unifiedPublications.length+' publications'},
+    {slug:'courses',title:'Teaching & learning',preview:unifiedCourses.length+' courses'},
+    {slug:'projects',title:'Projects',preview:(ongoingProjects.length+completedProjects.length)+' projects'},
+    {slug:'events',title:'Events',preview:unifiedEvents.length+' events'},
+    {slug:'background',title:'Education & experience'},
+  ];
+  const renderPersonSection = (section: any) => {
+    if(section.slug==='publications')return <PublicationList items={unifiedPublications}/>;
+    if(section.slug==='courses')return <ConnectedRecords items={unifiedCourses.map(c=>({...c,type:allDbCourses.find(course=>course.slug===c.slug)?.type}))} family="academy"/>;
+    if(section.slug==='events')return <ConnectedRecords items={unifiedEvents} family="events"/>;
+    if(section.slug==='projects')return <><ConnectedRecords items={ongoingProjects} family="projects"/>{completedProjects.length>0&&<div className="dossier-subsection"><h3>Completed work</h3><ConnectedRecords items={completedProjects} family="projects"/><button className="dossier-text-action" onClick={()=>setShowCompletedModal(true)}>Completed Projects ({completedProjects.length}) ↗</button></div>}</>;
+    if(section.slug==='background')return <PersonBackground person={person}/>;
+
+    return null;
+  };
+
+return (
     <div className="min-h-screen bg-paper pt-28 pb-24 grid-structure">
       {/* Google Scholar Sync Progress Overlay */}
       <AnimatePresence>
@@ -1270,1060 +1238,13 @@ export default function PeopleDetail() {
           />
         ) : (
           <>
-            {/* STUNNING VIEW PROFILE SCREEN */}
-            {/* Top Interactive Banner / Photo Carousel Area styling */}
-            <div className="relative border-4 border-ink shadow-[14px_14px_0px_rgba(0,0,0,1)] bg-white overflow-hidden mb-24 cursor-default">
-              {/* Photo Display Viewport */}
-              <div className="relative h-72 sm:h-96 md:h-[480px] w-full bg-ink/10 overflow-hidden">
-                <AnimatePresence mode="wait">
-                  <motion.img
-                    key={activeSlideIndex}
-                    src={getDriveImageUrl(bannersToRender[activeSlideIndex])}
-                    alt={`${person.fullName || person.name} Cover photograph`}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.6 }}
-                    className="w-full h-full object-cover grayscale brightness-90 hover:grayscale-0 transition-all duration-700 select-none pointer-events-none"
-                    referrerPolicy="no-referrer"
-                  />
-                </AnimatePresence>
+            {person.bannerImages?.length>0&&<figure className="profile-cover"><a href={getDriveImageUrl(person.bannerImages[activeSlideIndex % person.bannerImages.length])||undefined} target="_blank" rel="noreferrer"><RecordImage src={getDriveImageUrl(person.bannerImages[activeSlideIndex % person.bannerImages.length])||undefined} alt={`${person.fullName||person.name}: cover ${activeSlideIndex+1}`}/></a><figcaption><span>Cover {(activeSlideIndex % person.bannerImages.length)+1} of {person.bannerImages.length}</span>{person.bannerImages.length>1&&<div><button onClick={prevSlide} aria-label="Previous cover">← Previous</button><button onClick={nextSlide} aria-label="Next cover">Next →</button></div>}</figcaption></figure>}
+            <section className="person-summary">
+              <div><RecordHeading kind="person" record={person}/><PersonIntroduction key={person.slug} person={person} syncing={isAutoSyncing}/>{person.researchInterests?.length>0&&<div className="person-interests">{person.researchInterests.map((interest,i)=><span key={i}>{interest}</span>)}</div>}<ProfileLinks record={person}/></div>
+              <div className="person-portrait"><RecordImage src={getDriveImageUrl(person.image)||undefined} alt={person.fullName||person.name}/></div>
+            </section>
+            <RecordExperience key={person.slug} mode="notebook" title={person.fullName||person.name} sections={personSections} renderSection={renderPersonSection} glance={<RecordGlance record={person} kind="person"/>}/>
 
-                {/* Elegant Editorial Vignette Grid Overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/20 to-transparent flex flex-col justify-between p-6 md:p-10 select-none">
-                  {/* Slide controls overlay (only shown if multiple images exist) */}
-                  {bannersToRender.length > 1 ? (
-                    <div className="flex justify-between items-center w-full mt-2">
-                      <span className="font-mono text-[9px] font-black uppercase tracking-widest bg-brand-acid text-ink px-2.5 py-1 border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)]">
-                        COVER COLLAGE • GRAPHIC {activeSlideIndex + 1} OF{" "}
-                        {bannersToRender.length}
-                      </span>
-
-                      <div className="flex gap-2">
-                        <button
-                          onClick={prevSlide}
-                          className="w-9 h-9 border border-ink bg-paper hover:bg-brand-acid text-ink flex items-center justify-center transition-colors shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
-                          title="Previous photograph"
-                        >
-                          <ChevronLeft className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={nextSlide}
-                          className="w-9 h-9 border border-ink bg-paper hover:bg-brand-acid text-ink flex items-center justify-center transition-colors shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
-                          title="Next photograph"
-                        >
-                          <ChevronRight className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="font-mono text-[9px] font-black uppercase tracking-widest bg-ink text-paper px-2.5 py-1 border border-paper/10 max-w-fit">
-                      COUNCIL SCHOLASTIC PORTFOLIO
-                    </div>
-                  )}
-
-                  {/* Core display caption overlay with parallax style spacing */}
-                  <div className="text-paper md:max-w-4xl pt-12">
-                    <span className="font-mono text-[9px] md:text-[10px] uppercase font-bold tracking-[0.25em] text-brand-acid">
-                      {person.role.toUpperCase()}
-                    </span>
-                    <h2 className="serif text-3xl sm:text-5xl md:text-6xl font-black tracking-tight leading-none mt-2 text-white">
-                      {person.fullName || person.name}
-                    </h2>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Core Split Profile Row Setup */}
-            <div className="grid lg:grid-cols-12 gap-12 lg:gap-20 items-start">
-              {/* Left Column: Avatar Port & Connections Stack (4 grid cols) */}
-              <div className="lg:col-span-4 space-y-12">
-                {/* Avatar Overlap Card */}
-                <div className="relative -mt-36 z-20 mx-auto lg:mx-0 max-w-[340px] w-full">
-                  <div className="relative aspect-square border-4 border-ink shadow-[14px_14px_0px_rgba(0,0,0,1)] overflow-hidden bg-white rounded-none">
-                    <img
-                      src={getDriveImageUrl(person.image)}
-                      alt={person.fullName || person.name}
-                      className="w-full h-full object-cover grayscale hover:grayscale-0 transition-all duration-700 object-top"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute top-4 right-4 bg-brand-acid text-ink px-3 py-1 font-mono text-[9px] font-black border border-ink shadow-[2px_2px_0px_rgba(0,0,0,1)] select-none">
-                      VERIFIED FELLOW
-                    </div>
-                  </div>
-
-                  {/* Email trigger link */}
-                  <a
-                    href={`mailto:${person.email}`}
-                    className="w-full mt-6 py-4 border border-ink bg-paper hover:bg-brand-acid text-ink font-mono text-[10px] font-black tracking-widest block text-center uppercase transition-all flex items-center justify-center gap-2 group shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1"
-                  >
-                    <Mail className="w-4 h-4" />
-                    Email Dossier Address
-                  </a>
-                </div>
-
-                {/* RESEARCH INTERESTS AND SPECIALTIES (Requirement 4) */}
-                {person.researchInterests && person.researchInterests.length > 0 && (
-                  <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] p-6 space-y-4">
-                    <div className="border-b border-ink/15 pb-2">
-                      <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                        Scholarly Specialties
-                      </span>
-                      <h4 className="font-serif font-black text-base text-ink">
-                        Research Interests
-                      </h4>
-                    </div>
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {person.researchInterests.map((interest, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2.5 py-1 text-[9.5px] font-mono font-bold uppercase border-2 border-ink bg-brand-acid/15 text-ink hover:bg-brand-acid hover:-translate-y-0.5 hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] transition-all"
-                        >
-                          {interest}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* INSTITUTIONAL AFFILIATION AND PROGRAM CARDS */}
-                <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] p-6 space-y-6">
-                  {/* Centres of Affiliation */}
-                  <div>
-                    <div className="border-b border-ink/15 pb-2 mb-3">
-                      <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                        Institutional Affiliation
-                      </span>
-                      <h4 className="font-serif font-black text-base text-ink">
-                        Associated Centres
-                      </h4>
-                    </div>
-                    {affiliatedCentres.length > 0 ? (
-                      <div className="space-y-2">
-                        {affiliatedCentres.map((c) => (
-                          <Link
-                            key={c.slug}
-                            to={`/centres/${c.slug}`}
-                            className="flex items-center justify-between p-2.5 border border-ink bg-white hover:bg-brand-acid/20 transition-all text-[11px] group"
-                          >
-                            <span className="font-serif font-bold text-ink truncate pr-2">
-                              {c.name}
-                            </span>
-                            <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-ink/40 group-hover:text-ink transition-colors" />
-                          </Link>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="font-mono text-[10px] text-ink/40 italic">
-                        No associated centres listed.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Active & Ongoing Programs */}
-                  <div>
-                    <div className="border-b border-ink/15 pb-2 mb-3">
-                      <span className="font-mono text-[9px] uppercase font-black text-brand-blue">
-                        Active Research Roles
-                      </span>
-                      <h4 className="font-serif font-black text-base text-ink">
-                        Ongoing Projects
-                      </h4>
-                    </div>
-                    {ongoingProjects.length > 0 ? (
-                      <div className="space-y-2">
-                        {ongoingProjects.map((p) => (
-                          <Link
-                            key={p.slug}
-                            to={`/projects/${p.slug}`}
-                            className="flex flex-col p-3 border border-ink bg-white hover:border-brand-blue transition-all group"
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-mono text-[8px] text-brand-blue font-bold tracking-widest">
-                                {p.id}
-                              </span>
-                              <span className="text-[7.5px] font-mono px-1 border border-ink bg-brand-acid/15 font-black uppercase">
-                                {p.status}
-                              </span>
-                            </div>
-                            <span className="font-serif text-xs font-black truncate text-ink group-hover:text-brand-blue transition-colors">
-                              {p.title}
-                            </span>
-                          </Link>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="font-mono text-[10px] text-ink/40 italic">
-                        No active ongoing projects.
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Completed Projects Link trigger */}
-                  {completedProjects.length > 0 && (
-                    <div className="pt-2 border-t border-dashed border-ink/15">
-                      <button
-                        onClick={() => setShowCompletedModal(true)}
-                        className="w-full py-3 bg-ink text-paper font-mono text-[9px] font-black uppercase tracking-widest hover:bg-brand-acid hover:text-ink transition-all flex items-center justify-center gap-2 shadow-[2px_2px_0px_rgba(0,0,0,1)] active:translate-y-0.5"
-                      >
-                        <FileCheck className="w-4 h-4" />
-                        Completed Projects ({completedProjects.length})
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* ACADEMIC NETWORKS & CREDENTIAL PORT (Academia.edu, ResearchGate, Scholar, etc.) */}
-                <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)] p-6 space-y-6">
-                  <div className="border-b border-ink/15 pb-3">
-                    <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                      Digital Identities
-                    </span>
-                    <h4 className="font-serif font-black text-lg text-ink">
-                      Linked portfolios
-                    </h4>
-                  </div>
-
-                  <div className="grid gap-3 font-mono text-[10px] tracking-wider font-extrabold uppercase uppercase-placeholder">
-                    {/* Google Scholar Profile Card */}
-                    {(person.socials?.googlescholar || person.socials?.realGoogleScholar) && (
-                      <a
-                        href={person.socials.realGoogleScholar ? (person.socials.realGoogleScholar.startsWith("http") ? person.socials.realGoogleScholar : `https://scholar.google.com/citations?user=${person.socials.realGoogleScholar}`) : `https://scholar.google.com/citations?user=${person.socials.googlescholar}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-brand-orange/10 hover:border-brand-orange transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5 overflow-hidden">
-                          <div className="w-7 h-7 bg-brand-orange text-white flex items-center justify-center border border-ink rounded-none shrink-0">
-                            <GraduationCap className="w-4 h-4" />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-ink text-[9.5px] truncate">
-                              Google Scholar Profile
-                            </span>
-                            {(person.socials.realGoogleScholarCitations !== undefined || person.scholarStats?.citations !== undefined) && (
-                              <span className="text-brand-orange text-[8px] font-mono font-bold leading-none mt-0.5">
-                                CITATIONS: {person.socials.realGoogleScholarCitations !== undefined ? person.socials.realGoogleScholarCitations : person.scholarStats?.citations}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40 shrink-0" />
-                      </a>
-                    )}
-
-                    {/* Semantic Scholar Profile Card */}
-                    {person.socials?.semanticscholar && (
-                      <a
-                        href={person.socials.semanticscholar.startsWith("http") ? person.socials.semanticscholar : `https://www.semanticscholar.org/author/${person.socials.semanticscholar}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-brand-blue/10 hover:border-brand-blue transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5 overflow-hidden">
-                          <div className="w-7 h-7 bg-brand-blue text-white flex items-center justify-center border border-ink rounded-none shrink-0">
-                            <GraduationCap className="w-4 h-4" />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-ink text-[9.5px] truncate">
-                              Semantic Scholar Profile
-                            </span>
-                            {person.socials.semanticscholarCitations !== undefined && (
-                              <span className="text-brand-blue text-[8px] font-mono font-bold leading-none mt-0.5">
-                                CITATIONS: {person.socials.semanticscholarCitations}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40 shrink-0" />
-                      </a>
-                    )}
-
-                    {/* ORCID iD Card */}
-                    {person.socials?.orcid && (
-                      <a
-                        href={person.socials.orcid.startsWith("http") ? person.socials.orcid : `https://orcid.org/${person.socials.orcid}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-brand-acid/30 hover:border-[#a6ce39] transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5 overflow-hidden">
-                          <div className="w-7 h-7 bg-[#a6ce39] text-white flex items-center justify-center border border-ink rounded-none shrink-0">
-                            <Fingerprint className="w-4 h-4 text-white" />
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className="text-ink text-[9.5px] truncate">
-                              ORCID Identifier
-                            </span>
-                            <span className="text-ink/65 text-[7px] font-mono leading-none mt-0.5 truncate uppercase">
-                              iD: {person.socials.orcid}
-                            </span>
-                          </div>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40 shrink-0" />
-                      </a>
-                    )}
-
-                    {/* ResearchGate profile Card */}
-                    {person.socials?.researchgate && (
-                      <a
-                        href={person.socials.researchgate}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-[#00ccbb]/10 hover:border-[#00ccbb] transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-[#00ccbb] text-white flex items-center justify-center font-serif text-sm font-black border border-ink rounded-none select-none">
-                            RG
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            ResearchGate Record
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* Academia.edu profile card */}
-                    {person.socials?.academia && (
-                      <a
-                        href={person.socials.academia}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-[#0f2d4a]/10 hover:border-[#0f2d4a] transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-[#0f2d4a] text-white flex items-center justify-center font-serif text-sm font-black border border-ink rounded-none select-none">
-                            a
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            Academia.edu profile
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* LinkedIn card */}
-                    {person.socials?.linkedin && (
-                      <a
-                        href={person.socials.linkedin}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-brand-blue/10 hover:border-brand-blue transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-brand-blue text-white flex items-center justify-center border border-ink rounded-none">
-                            <Linkedin className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            LinkedIn Profile
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* GitHub Card */}
-                    {person.socials?.github && (
-                      <a
-                        href={person.socials.github}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-black/5 hover:border-black transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-ink text-paper flex items-center justify-center border border-ink rounded-none">
-                            <Github className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            GitHub Repositories
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* Twitter handle */}
-                    {person.socials?.twitter && (
-                      <a
-                        href={person.socials.twitter}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-ink/5 hover:border-ink transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-white text-ink flex items-center justify-center border border-ink rounded-none">
-                            <Twitter className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            X / Twitter Feed
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* Personal Website */}
-                    {person.socials?.website && (
-                      <a
-                        href={person.socials.website}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-brand-acid/20 hover:border-brand-orange transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-brand-acid text-ink flex items-center justify-center border border-ink rounded-none">
-                            <Globe className="w-3.5 h-3.5" />
-                          </div>
-                          <span className="text-ink text-[9.5px]">
-                            Science Portfolio Blog
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    )}
-
-                    {/* Custom user-defined Portfolio links */}
-                    {person.otherLinks?.map((ol, olIdx) => (
-                      <a
-                        key={olIdx}
-                        href={ol.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-3 border border-ink bg-white hover:bg-paper transition-colors gap-4"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 bg-paper text-ink flex items-center justify-center border border-ink rounded-none">
-                            <Link2 className="w-3.5 h-3.5 text-brand-orange" />
-                          </div>
-                          <span className="text-ink text-[9.5px] truncate max-w-[200px]">
-                            {ol.label}
-                          </span>
-                        </div>
-                        <ArrowUpRight className="w-4 h-4 text-ink/40" />
-                      </a>
-                    ))}
-
-                    {!person.socials && !person.otherLinks && (
-                      <span className="text-xs text-ink/40 font-mono italic">
-                        No digital academic identifiers linked to profile
-                        dossiers.
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Expandable Cards for Education, Experience, and Events */}
-                <div className="space-y-6">
-                  <div className="border-b border-ink/15 pb-2">
-                    <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                      Dossier Highlights
-                    </span>
-                    <h3 className="font-serif font-black text-xl text-ink">
-                      Curriculum &amp; Involvements
-                    </h3>
-                  </div>
-
-                  <div className="space-y-4">
-                    {/* Academic Qualifications & Degrees */}
-                    <div className="border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all">
-                      <button
-                        onClick={() => setEduExpanded(!eduExpanded)}
-                        className="w-full p-4 flex justify-between items-center bg-paper/20 border-b border-ink/10 hover:bg-brand-acid/15 transition-all text-left"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-brand-blue/10 border border-brand-blue/20 text-brand-blue shrink-0">
-                            <GraduationCap className="w-4 h-4" />
-                          </div>
-                          <h4 className="font-serif font-black text-base text-ink">
-                            Academic Degrees
-                          </h4>
-                        </div>
-                        <span className="font-mono text-[9px] font-black text-ink/70">
-                          {eduExpanded ? "[-] HIDE" : "[+] SHOW"}
-                        </span>
-                      </button>
-                      {eduExpanded && (
-                        <div className="p-4 bg-white space-y-4">
-                          {person.education && person.education.length > 0 ? (
-                            <div className="grid grid-cols-1 gap-4">
-                              {person.education.map((edu, idx) => (
-                                <div
-                                  key={idx}
-                                  className="p-3.5 border border-ink/15 bg-paper/10 flex items-start gap-3 hover:border-brand-blue transition-colors"
-                                >
-                                  <div className="p-1 bg-brand-acid text-ink border border-ink shrink-0 font-mono text-[8.5px] font-black px-1.5 select-none">
-                                    {edu.year}
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h5 className="font-serif text-xs font-black leading-tight text-ink">
-                                      {edu.degree}
-                                    </h5>
-                                    <p className="font-mono text-[7.5px] font-black uppercase text-ink/50 tracking-wider mt-1">
-                                      {edu.institution}
-                                    </p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="font-mono text-[10px] text-ink/40 italic">
-                              No academic degrees logged.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Employment Timelines & Tenure Experience */}
-                    <div className="border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all">
-                      <button
-                        onClick={() => setExpExpanded(!expExpanded)}
-                        className="w-full p-4 flex justify-between items-center bg-paper/20 border-b border-ink/10 hover:bg-brand-acid/15 transition-all text-left"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-brand-blue/10 border border-brand-blue/20 text-brand-blue shrink-0">
-                            <Briefcase className="w-4 h-4" />
-                          </div>
-                          <h4 className="font-serif font-black text-base text-ink">
-                            Employment History
-                          </h4>
-                        </div>
-                        <span className="font-mono text-[9px] font-black text-ink/70">
-                          {expExpanded ? "[-] HIDE" : "[+] SHOW"}
-                        </span>
-                      </button>
-                      {expExpanded && (
-                        <div className="p-4 bg-white space-y-6">
-                          {person.experience && person.experience.length > 0 ? (
-                            <div className="relative border-l border-ink/15 pl-5 ml-2.5 space-y-5 py-1">
-                              {person.experience.map((exp, idx) => (
-                                <div key={idx} className="relative">
-                                  <div className="absolute -left-9 top-0.5 w-6 h-6 rounded-full border border-ink bg-brand-acid text-ink flex items-center justify-center font-mono text-[8.5px] font-black shadow-[1px_1px_0px_rgba(0,0,0,1)]">
-                                    {idx + 1}
-                                  </div>
-                                  <div className="bg-paper/10 border border-ink/15 p-3.5 hover:border-brand-blue transition-colors">
-                                    <div className="flex flex-col gap-1 mb-2">
-                                      <h5 className="font-serif text-xs font-black text-brand-blue leading-tight">
-                                        {exp.role}
-                                      </h5>
-                                      <span className="font-mono text-[7.5px] font-black uppercase tracking-wider text-ink/50 border border-ink/15 px-1.5 py-0.5 bg-white max-w-fit">
-                                        {exp.period}
-                                      </span>
-                                    </div>
-                                    <div className="font-mono text-[7.5px] uppercase font-bold text-ink/40 tracking-wider mb-2">
-                                      {exp.organization}
-                                    </div>
-                                    {exp.description && (
-                                      <p className="font-serif text-[11px] text-ink/75 leading-relaxed pt-2 border-t border-dashed border-ink/10">
-                                        {exp.description}
-                                      </p>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="font-mono text-[10px] text-ink/40 italic">
-                              No professional tenure logs.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Event Involvements & Lecture Series */}
-                    <div className="border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] transition-all">
-                      <button
-                        onClick={() => setEventsExpanded(!eventsExpanded)}
-                        className="w-full p-4 flex justify-between items-center bg-paper/20 border-b border-ink/10 hover:bg-brand-acid/15 transition-all text-left"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="p-1.5 bg-brand-blue/10 border border-brand-blue/20 text-brand-blue shrink-0">
-                            <Activity className="w-4 h-4" />
-                          </div>
-                          <h4 className="font-serif font-black text-base text-ink">
-                            Symposium &amp; Lectures
-                          </h4>
-                        </div>
-                        <span className="font-mono text-[9px] font-black text-ink/70">
-                          {eventsExpanded ? "[-] HIDE" : "[+] SHOW"}
-                        </span>
-                      </button>
-                      {eventsExpanded && (
-                        <div className="p-4 bg-white space-y-4">
-                          {associatedEvents.length > 0 ? (
-                            <div className="grid grid-cols-1 gap-4">
-                              {associatedEvents.map((e) => (
-                                <Link
-                                  key={e.slug}
-                                  to={`/events/${e.slug}`}
-                                  className="p-3.5 border border-ink/15 bg-paper/5 hover:border-brand-blue hover:bg-brand-blue/5 transition-all flex flex-col justify-between group cursor-pointer text-ink"
-                                >
-                                  <div className="flex justify-between items-start w-full mb-2">
-                                    <span className="px-1.5 py-0.5 border border-current text-[7px] font-mono font-bold bg-brand-acid text-ink uppercase">
-                                      {e.type}
-                                    </span>
-                                    <span className="font-mono text-[7px] text-ink/55">
-                                      {e.dates}
-                                    </span>
-                                  </div>
-                                  <h5 className="font-serif text-[11px] font-black text-ink group-hover:text-brand-blue transition-colors leading-tight">
-                                    {e.title}
-                                  </h5>
-                                  <div className="flex items-center gap-1 mt-3 text-[7.5px] font-mono text-ink/60">
-                                    <MapPin className="w-3 h-3 text-brand-orange" />
-                                    {e.location}
-                                  </div>
-                                </Link>
-                              ))}
-                            </div>
-                          ) : (
-                            <p className="font-mono text-[10px] text-ink/40 italic">
-                              No associated symposium lectures registered.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: Research metrics, biography details and scholar lists (8 grid cols) */}
-              <div className="lg:col-span-8 space-y-12">
-                {/* INTUITIVE CITATION METRIC BOARD (Shown if Scholar synced or manual stats exist) */}
-                {person.scholarStats && (
-                  <div className="border-4 border-ink bg-brand-acid text-ink p-6 shadow-[8px_8px_0px_rgba(0,0,0,1)] relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 p-2 bg-ink text-brand-acid text-[7px] font-mono tracking-widest font-black uppercase rotate-0 select-none">
-                      INDEXED STATS
-                    </div>
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-6 border-b border-ink/20 pb-4">
-                      <span className="font-mono text-xs font-black uppercase tracking-widest flex items-center gap-1.5">
-                        <BarChart3 className="w-4 h-4 text-brand-blue" />
-                        Google Scholar Analytics Telemetry
-                      </span>
-                      <div className="flex items-center gap-2">
-                        {isAutoSyncing && (
-                          <span className="font-mono text-[8px] text-brand-blue font-bold tracking-wider uppercase animate-pulse flex items-center gap-1">
-                            <Loader className="w-2.5 h-2.5 animate-spin" /> Auto-Updating...
-                          </span>
-                        )}
-                        <span className="font-mono text-[9px] font-bold text-ink/60 uppercase">
-                          IMPORTED • {person.scholarStats.lastUpdated || "MAY 2026"}
-                        </span>
-                      </div>
-                    </div>
-
-                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                       {/* Total citations */}
-                       <div className="bg-white border-2 border-ink p-4 text-center shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                         <span className="block font-mono text-[9px] uppercase font-black text-ink/50 tracking-wider">
-                           Citations
-                         </span>
-                         <span className="block font-serif font-black text-3xl md:text-4xl text-brand-blue mt-1 leading-none">
-                           {person.scholarStats.citations || 0}
-                         </span>
-                         <span className="block font-mono text-[8px] text-ink/40 uppercase tracking-widest mt-1">
-                           Total count
-                         </span>
-                       </div>
- 
-                       {/* h-index factor */}
-                       <div className="bg-white border-2 border-ink p-4 text-center shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                         <span className="block font-mono text-[9px] uppercase font-black text-ink/50 tracking-wider">
-                           h-Index
-                         </span>
-                         <span className="block font-serif font-black text-3xl md:text-4xl text-brand-orange mt-1 leading-none">
-                           {person.scholarStats.hIndex || 0}
-                         </span>
-                         <span className="block font-mono text-[8px] text-ink/40 uppercase tracking-widest mt-1">
-                           Index factor
-                         </span>
-                       </div>
- 
-                       {/* i10-index */}
-                       <div className="bg-white border-2 border-ink p-4 text-center shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                         <span className="block font-mono text-[9px] uppercase font-black text-ink/50 tracking-wider">
-                           i10-Index
-                         </span>
-                         <span className="block font-serif font-black text-3xl md:text-4xl text-ink mt-1 leading-none">
-                           {person.scholarStats.i10Index || 0}
-                         </span>
-                         <span className="block font-mono text-[8px] text-ink/40 uppercase tracking-widest mt-1">
-                           Academic depth
-                         </span>
-                       </div>
-
-                       {/* total papers */}
-                       <div className="bg-white border-2 border-ink p-4 text-center shadow-[3px_3px_0px_rgba(0,0,0,1)]">
-                         <span className="block font-mono text-[9px] uppercase font-black text-ink/50 tracking-wider">
-                           Publications
-                         </span>
-                         <span className="block font-serif font-black text-3xl md:text-4xl text-brand-blue mt-1 leading-none">
-                           {person.scholarStats.publicationCount || 0}
-                         </span>
-                         <span className="block font-mono text-[8px] text-ink/40 uppercase tracking-widest mt-1">
-                           Scraped Papers
-                         </span>
-                       </div>
-                     </div>
-                  </div>
-                )}
-
-                {/* Editorial Narrative Biography Area */}
-                <div className="space-y-6">
-                  <div className="text-[10px] font-mono font-black uppercase tracking-[0.3em] text-ink/30 mb-2 flex items-center gap-2">
-                    <span className="w-8 h-[1px] bg-ink/20" />
-                    Research Narrative &amp; Focus Area
-                  </div>
-                  <blockquote className="font-serif text-xl md:text-2xl font-light italic leading-relaxed text-ink/85 border-l-4 border-brand-orange pl-6">
-                    {person.bio}
-                  </blockquote>
-                </div>
-
-                {/* Interactive Tabbed Portfolio Section (Requirement 3: tabbed Publications, Courses, Events) */}
-                <div className="border border-ink bg-white shadow-[6px_6px_0px_rgba(0,0,0,1)]">
-                  {/* Tab headers */}
-                  <div className="flex border-b border-ink bg-paper/10 overflow-x-auto">
-                    <button
-                      onClick={() => setActiveViewTab("publications")}
-                      className={`py-3.5 px-6 font-mono text-[10px] font-black uppercase tracking-wider border-r border-ink border-b-2 last:border-r-0 transition-all cursor-pointer ${
-                        activeViewTab === "publications"
-                          ? "bg-brand-acid text-ink border-b-brand-blue border-b-4 font-black"
-                          : "hover:bg-ink/5 border-b-transparent"
-                      }`}
-                    >
-                      📚 Publications ({unifiedPublications.length})
-                    </button>
-                    <button
-                      onClick={() => setActiveViewTab("courses")}
-                      className={`py-3.5 px-6 font-mono text-[10px] font-black uppercase tracking-wider border-r border-ink border-b-2 last:border-r-0 transition-all cursor-pointer ${
-                        activeViewTab === "courses"
-                          ? "bg-brand-acid text-ink border-b-brand-orange border-b-4 font-black"
-                          : "hover:bg-ink/5 border-b-transparent"
-                      }`}
-                    >
-                      🎓 Courses ({unifiedCourses.length})
-                    </button>
-                    <button
-                      onClick={() => setActiveViewTab("events")}
-                      className={`py-3.5 px-6 font-mono text-[10px] font-black uppercase tracking-wider border-r border-ink border-b-2 last:border-r-0 transition-all cursor-pointer ${
-                        activeViewTab === "events"
-                          ? "bg-brand-acid text-ink border-b-brand-blue border-b-4 font-black"
-                          : "hover:bg-ink/5 border-b-transparent"
-                      }`}
-                    >
-                      ⚡ Events ({unifiedEvents.length})
-                    </button>
-                  </div>
-
-                  {/* Tab Panels */}
-                  <div className="p-6">
-                    {activeViewTab === "publications" && (
-                      <div className="space-y-6 animate-fade-in">
-                        <div className="border-b border-ink/15 pb-2">
-                          <span className="font-mono text-[9px] uppercase font-black text-brand-blue">
-                            Publications Docket
-                          </span>
-                          <h3 className="font-serif font-black text-xl text-ink">
-                            Scientific Bibliography
-                          </h3>
-                        </div>
-
-                        <div className="space-y-4">
-                          {unifiedPublications.length > 0 ? (
-                            unifiedPublications.map((pub, idx) => (
-                              <div
-                                key={idx}
-                                className="p-4 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-none transition-all flex items-start gap-4"
-                              >
-                                <div className="w-8 h-8 rounded-none border border-ink bg-brand-acid text-ink flex items-center justify-center font-mono text-xs font-black shrink-0 font-bold">
-                                  {idx + 1}
-                                </div>
-                                <div className="space-y-2 min-w-0 flex-1">
-                                  {pub.link ? (
-                                    <a
-                                      href={pub.link}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="font-serif text-sm font-black italic leading-snug text-ink pr-4 hover:text-brand-blue hover:underline transition-colors block"
-                                    >
-                                      "{pub.title}"
-                                    </a>
-                                  ) : (
-                                    <p className="font-serif text-sm font-black italic leading-snug text-ink pr-4">
-                                      "{pub.title}"
-                                    </p>
-                                  )}
-                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                    {pub.year && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-orange/10 text-brand-orange border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                        Year: {pub.year}
-                                      </span>
-                                    )}
-                                    {pub.citationCount !== undefined && pub.citationCount > 0 && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                        Citations: {pub.citationCount}
-                                      </span>
-                                    )}
-                                    {pub.isScholarSynced && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-[#4285f4] bg-[#4285f4]/5 border border-[#4285f4]/20 px-1.5 py-0.5 rounded-none">
-                                        <GraduationCap className="w-3 h-3 shrink-0" />
-                                        Scholar Synced
-                                      </span>
-                                    )}
-                                    {pub.isManualEntry && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-orange bg-brand-orange/5 border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                        <Award className="w-3 h-3 shrink-0" />
-                                        Dossier Entry
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="p-8 border-2 border-dashed border-ink/20 bg-paper/10 text-center font-mono text-xs text-ink/40">
-                              No publications matched or entered in database. Use profile edit controls to import or add.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeViewTab === "courses" && (
-                      <div className="space-y-6 animate-fade-in">
-                        <div className="border-b border-ink/15 pb-2">
-                          <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                            Curriculum Core
-                          </span>
-                          <h3 className="font-serif font-black text-xl text-ink">
-                            Courses &amp; Instruction
-                          </h3>
-                        </div>
-
-                        <div className="space-y-4">
-                          {unifiedCourses.length > 0 ? (
-                            unifiedCourses.map((c, idx) => (
-                              <div
-                                key={idx}
-                                className="p-4 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-none transition-all flex items-start gap-4"
-                              >
-                                <div className="w-8 h-8 rounded-none border border-ink bg-brand-acid text-ink flex items-center justify-center font-mono text-xs font-black shrink-0 font-bold">
-                                  {idx + 1}
-                                </div>
-                                <div className="space-y-2 min-w-0 flex-1">
-                                  {c.link ? (
-                                    <Link
-                                      to={c.link}
-                                      className="font-serif text-sm font-black italic leading-snug text-ink pr-4 hover:text-brand-blue hover:underline transition-colors block"
-                                    >
-                                      {c.title}
-                                    </Link>
-                                  ) : (
-                                    <p className="font-serif text-sm font-black italic leading-snug text-ink pr-4">
-                                      {c.title}
-                                    </p>
-                                  )}
-                                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                    {c.role && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                        Role: {c.role}
-                                      </span>
-                                    )}
-                                    {c.dates && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-orange/10 text-brand-orange border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                        Timeline: {c.dates}
-                                      </span>
-                                    )}
-                                    {c.venue && (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-ink/65 bg-paper/10 border border-ink/20 px-1.5 py-0.5 rounded-none">
-                                        <MapPin className="w-3 h-3 shrink-0 text-brand-orange" />
-                                        {c.venue}
-                                      </span>
-                                    )}
-                                    {c.isManual ? (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-orange bg-brand-orange/5 border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                        <Award className="w-3 h-3 shrink-0" />
-                                        Dossier Added
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-blue bg-brand-blue/5 border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                        <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                        Verified LMS Course
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            ))
-                          ) : (
-                            <div className="p-8 border-2 border-dashed border-ink/20 bg-paper/10 text-center font-mono text-xs text-ink/40">
-                              No instructional courses matched. Use profile editor to add academic courses.
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {activeViewTab === "events" && (
-                      <div className="space-y-8 animate-fade-in">
-                        {unifiedEvents.length > 0 ? (
-                          <>
-                            {/* Section 1: Lectures & Presentations */}
-                            {presenterEvents.length > 0 && (
-                              <div className="space-y-4">
-                                <div className="border-b border-ink/15 pb-2">
-                                  <span className="font-mono text-[9px] uppercase font-black text-brand-blue">
-                                    Academic Delivery
-                                  </span>
-                                  <h3 className="font-serif font-black text-xl text-ink">
-                                    Lectures &amp; Presentations
-                                  </h3>
-                                </div>
-                                <div className="space-y-4">
-                                  {presenterEvents.map((e, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="p-4 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-none transition-all flex items-start gap-4"
-                                    >
-                                      <div className="w-8 h-8 rounded-none border border-ink bg-brand-acid text-ink flex items-center justify-center font-mono text-xs font-black shrink-0 font-bold">
-                                        {idx + 1}
-                                      </div>
-                                      <div className="space-y-2 min-w-0 flex-1">
-                                        {e.link ? (
-                                          <Link
-                                            to={e.link}
-                                            className="font-serif text-sm font-black italic leading-snug text-ink pr-4 hover:text-brand-blue hover:underline transition-colors block"
-                                          >
-                                            {e.title}
-                                          </Link>
-                                        ) : (
-                                          <p className="font-serif text-sm font-black italic leading-snug text-ink pr-4">
-                                            {e.title}
-                                          </p>
-                                        )}
-                                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                          {e.role && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                              Engagement: {e.role}
-                                            </span>
-                                          )}
-                                          {e.dates && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-orange/10 text-brand-orange border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                              Date: {e.dates}
-                                            </span>
-                                          )}
-                                          {e.venue && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-ink/65 bg-paper/10 border border-ink/20 px-1.5 py-0.5 rounded-none">
-                                              <MapPin className="w-3 h-3 shrink-0 text-brand-orange" />
-                                              {e.venue}
-                                            </span>
-                                          )}
-                                          {e.isManual ? (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-orange bg-brand-orange/5 border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                              <Award className="w-3 h-3 shrink-0" />
-                                              Dossier Added
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-blue bg-brand-blue/5 border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                              <Calendar className="w-3 h-3 shrink-0" />
-                                              Verified Event
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Section 2: Organisation & Outreach */}
-                            {otherEvents.length > 0 && (
-                              <div className="space-y-4 pt-4 border-t border-ink/10">
-                                <div className="border-b border-ink/15 pb-2">
-                                  <span className="font-mono text-[9px] uppercase font-black text-brand-orange">
-                                    Coordination &amp; Influence
-                                  </span>
-                                  <h3 className="font-serif font-black text-xl text-ink">
-                                    Organisation &amp; Outreach
-                                  </h3>
-                                </div>
-                                <div className="space-y-4">
-                                  {otherEvents.map((e, idx) => (
-                                    <div
-                                      key={idx}
-                                      className="p-4 border border-ink bg-white shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-none transition-all flex items-start gap-4"
-                                    >
-                                      <div className="w-8 h-8 rounded-none border border-ink bg-brand-acid text-ink flex items-center justify-center font-mono text-xs font-black shrink-0 font-bold">
-                                        {idx + 1}
-                                      </div>
-                                      <div className="space-y-2 min-w-0 flex-1">
-                                        {e.link ? (
-                                          <Link
-                                            to={e.link}
-                                            className="font-serif text-sm font-black italic leading-snug text-ink pr-4 hover:text-brand-blue hover:underline transition-colors block"
-                                          >
-                                            {e.title}
-                                          </Link>
-                                        ) : (
-                                          <p className="font-serif text-sm font-black italic leading-snug text-ink pr-4">
-                                            {e.title}
-                                          </p>
-                                        )}
-                                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                          {e.role && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-blue/10 text-brand-blue border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                              Engagement: {e.role}
-                                            </span>
-                                          )}
-                                          {e.dates && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-extrabold uppercase bg-brand-orange/10 text-brand-orange border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                              Date: {e.dates}
-                                            </span>
-                                          )}
-                                          {e.venue && (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-ink/65 bg-paper/10 border border-ink/20 px-1.5 py-0.5 rounded-none">
-                                              <MapPin className="w-3 h-3 shrink-0 text-brand-orange" />
-                                              {e.venue}
-                                            </span>
-                                          )}
-                                          {e.isManual ? (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-orange bg-brand-orange/5 border border-brand-orange/20 px-1.5 py-0.5 rounded-none">
-                                              <Award className="w-3 h-3 shrink-0" />
-                                              Dossier Added
-                                            </span>
-                                          ) : (
-                                            <span className="inline-flex items-center gap-1 font-mono text-[8px] font-black uppercase text-brand-blue bg-brand-blue/5 border border-brand-blue/20 px-1.5 py-0.5 rounded-none">
-                                              <Calendar className="w-3 h-3 shrink-0" />
-                                              Verified Event
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <div className="p-8 border-2 border-dashed border-ink/20 bg-paper/10 text-center font-mono text-xs text-ink/40">
-                            No connected symposiums, lectures, or presentations associated with this profile slot.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-
-              </div>
-            </div>
           </>
         )}
       </div>

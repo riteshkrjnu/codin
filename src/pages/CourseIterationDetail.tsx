@@ -1,3 +1,8 @@
+import RecordContent from '../site/layout/RecordContent';
+import RecordExperience from '../site/layout/RecordExperience';
+import RecordGlance from '../site/layout/RecordGlance';
+import { useLifecycleNow } from '../lib/lifecycleClock';
+import RecordHeading from '../site/layout/RecordHeading';
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -12,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 import { renderMarkdown } from '../lib/utils';
 
 export default function CourseIterationDetail() {
+  const now=useLifecycleNow();
   const { slug } = useParams();
   const [course, setCourse] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +152,7 @@ export default function CourseIterationDetail() {
       }
     }
     fetchCourse();
-  }, [slug]);
+  }, [slug, user?.token, myStatus?.participant?.admissionStatus, myStatus?.participant?.paymentStatus]);
 
   if (loading) {
     return (
@@ -174,18 +180,10 @@ export default function CourseIterationDetail() {
 
   const curriculumList = course.curriculum || course.outline || [];
   const highlightsList = course.highlights || [];
-  const materialsList = course.materials || [];
+  const materialsList = user ? course.materials || [] : [];
 
-  return (
-    <div className="pt-32 pb-24 grid-structure min-h-screen">
-      <div className="max-w-[1600px] mx-auto px-6 lg:px-12">
-        <Link to="/academy/residential" className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] mb-12 hover:text-brand-blue transition-colors group">
-          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-          Academy Index
-        </Link>
-
-        <div className="grid lg:grid-cols-12 gap-24 mb-32">
-          <div className="lg:col-span-8">
+  const courseSections = [{slug:'overview',title:'Course overview',preview:course.description},{slug:'registration',title:'Registration & materials',type:'registration'}, ...(course.subPages || []).filter((s: any) => s.type !== 'registration').map((s: any) => ({...s, slug: s.slug === 'overview' ? 'course-overview' : s.slug}))];
+const renderCourseSection = (section: any) => section.slug !== 'overview' && section.slug !== 'registration' ? <RecordContent section={section}/> : section.slug === 'overview' ? (<div className="record-detail-main">
             <div className="flex items-center gap-4 mb-8">
                <div className="font-mono text-[10px] font-black uppercase tracking-widest bg-brand-acid border border-ink px-3 py-1 shadow-[4px_4px_0px_rgba(0,0,0,1)]">
                  Iteration: {course.iteration}
@@ -195,18 +193,6 @@ export default function CourseIterationDetail() {
                </div>
             </div>
             
-            <h1 className="text-6xl md:text-8xl font-serif font-black italic leading-[0.85] mb-12 perspective-text">
-              {(course.title || '').split(' ').map((word: string, i: number) => (
-                <span key={i} className={i === 2 ? 'text-outline block' : 'block'}>
-                  {word}
-                </span>
-              ))}
-            </h1>
-
-            <p className="font-serif text-3xl font-light italic leading-tight text-ink/80 mb-16 max-w-2xl">
-              {course.tagline || course.description}
-            </p>
-
             {/* Core Info Row */}
             <div className="grid sm:grid-cols-2 gap-px bg-ink border border-ink mb-24 overflow-hidden">
                <div className="bg-paper p-8 flex gap-4 items-start">
@@ -242,58 +228,10 @@ export default function CourseIterationDetail() {
                   ))}
                </div>
             </div>
-          </div>
-
-          {/* Sidebar: Registration & Materials */}
-          <div className="lg:col-span-4 space-y-12">
+          </div>) : (<><RecordContent section={course.subPages?.find((s:any)=>s.type==='registration')||{slug:'fees',title:'Registration',type:'registration',content:course.registrationCard}}/><div className="detail-aside space-y-12">
             <div className="sticky top-32 space-y-8">
                {myStatus?.accepted ? (
-                 myStatus.participant?.admissionStatus === "Confirmed" ? (
-                   <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
-                     <div>
-                       <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-acid text-ink font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
-                         <Shield className="w-4 h-4 text-ink" strokeWidth={3} />{" "}
-                         LMS PORTAL: ACCESS GRANTED
-                       </div>
-                       <h3 className="text-2xl font-serif font-black italic mb-4 leading-tight text-white font-bold">
-                         Course Materials Active
-                       </h3>
-                       <p className="text-[10px] opacity-75 mb-6 uppercase tracking-wider font-mono font-bold leading-relaxed border-b border-white/10 pb-4">
-                         NAME:{" "}
-                         <span className="font-semibold text-brand-acid">
-                           {myStatus.participant.name}
-                         </span>{" "}
-                         <br />
-                         EMAIL:{" "}
-                         <span className="font-semibold text-brand-acid">
-                           {myStatus.participant.email}
-                         </span>
-                       </p>
-
-                       <div className="p-4 border border-brand-acid bg-brand-acid/10 text-brand-acid flex items-center gap-3 mb-6 font-bold">
-                         <Check
-                           className="w-5 h-5 text-brand-acid shrink-0"
-                           strokeWidth={3}
-                         />
-                         <div className="font-mono text-[10px] font-black uppercase tracking-wide">
-                           Admission Verified!
-                         </div>
-                       </div>
-
-                       <div className="space-y-4">
-                         <p className="text-xs text-paper/85 leading-relaxed font-sans font-medium">
-                           Your admission is confirmed. You now have full access to study materials, class recordings, and online modules.
-                         </p>
-                         <Link
-                           to={`/academy/online/${slug}`}
-                           className="w-full h-14 bg-brand-acid text-ink font-mono font-black uppercase tracking-widest text-xs hover:bg-white hover:-translate-y-1 transition-all shadow-[6px_6px_0px_rgba(255,255,255,0.25)] active:shadow-none active:translate-y-0 cursor-pointer font-bold border border-ink flex items-center justify-center hover:no-underline text-center"
-                         >
-                           View Materials 📚
-                         </Link>
-                       </div>
-                     </div>
-                   </div>
-                 ) : myStatus.participant?.paymentStatus === "Confirmed" ? (
+                 myStatus.participant?.admissionStatus === "Confirmed" ? null : myStatus.participant?.paymentStatus === "Confirmed" ? (
                    <div className="bg-ink text-paper p-10 border border-ink shadow-[12px_12px_0px_rgba(0,0,0,1)] flex flex-col justify-between text-left brutalist-card animate-fade-in animate-once">
                      <div>
                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500 text-ink font-mono text-[9px] font-black uppercase tracking-widest border border-ink shadow-[2px_2px_0px_rgba(255,255,255,1)] mb-6 font-bold">
@@ -566,8 +504,16 @@ export default function CourseIterationDetail() {
                  </div>
                )}
             </div>
-          </div>
-        </div>
+          </div></>);
+return (
+    <div className="pt-32 pb-24 grid-structure min-h-screen">
+      <div className="max-w-[1600px] mx-auto px-6 lg:px-12">
+        <Link to="/academy/residential" className="inline-flex items-center gap-2 font-mono text-[10px] font-black uppercase tracking-[0.3em] mb-12 hover:text-brand-blue transition-colors group">
+          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+          Academy Index
+        </Link>
+
+        <RecordHeading kind="course" record={course}/><RecordExperience key={course.slug} title={course.title} sections={courseSections} renderSection={renderCourseSection} glance={<RecordGlance record={course} kind="course"/>}/>
 
         {/* Footer Link */}
         <div className="pt-24 border-t border-ink flex flex-col md:flex-row justify-between items-center gap-12 text-ink/40 font-mono text-[10px] font-black uppercase tracking-[0.4em]">

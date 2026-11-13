@@ -1,18 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Serif+Display:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
-@theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
-  --font-mono: "JetBrains Mono", monospace;
-  
-  --color-paper: #f2efea;
-  --color-ink: #0e0d0d;
-  --color-brand-blue: #3b51ee;
-  --color-brand-orange: #f64b1d;
-  --color-brand-acid: #a4f21d;
-  --color-line: #0e0d0d;
-}
+@import "./site/theme/tokens.css";
 
 @layer base {
   body {
@@ -110,3 +99,12 @@
 }
 
 
+
+html { scrollbar-gutter: stable; }
+
+.participation-phase-editor{padding:20px;border:1px solid var(--color-ink,#214037);margin:20px 0;font-size:13px;line-height:1.6}
+.participation-phase-editor h3{font-weight:700;font-size:18px;margin-bottom:8px}.participation-phase-editor p{margin:8px 0}
+.participation-phase-editor fieldset{border:1px solid #a6aaa0;padding:14px;margin:12px 0;min-width:0}.participation-phase-editor legend{font-weight:700;padding:0 6px}
+.participation-phase-editor .phase-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px}
+.participation-phase-editor label{display:flex;flex-direction:column;gap:4px;font-size:12px}.participation-phase-editor input,.participation-phase-editor select{width:100%;min-width:0;padding:9px;border:1px solid #a6aaa0;background:var(--color-paper,#faf9f5);color:var(--color-ink,#214037)}
+.participation-phase-editor button{padding:6px 10px;margin:8px 8px 0 0;border:1px solid #a6aaa0;font-size:12px}.participation-phase-editor .phase-error{color:#b43320}.participation-phase-editor .phase-preview{padding:12px;border-top:1px solid #a6aaa0;margin-top:16px}.participation-phase-editor ul{list-style:disc;padding-left:20px}

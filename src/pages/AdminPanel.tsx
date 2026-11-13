@@ -1,6 +1,10 @@
+import ParticipationPhaseEditor from '../components/ParticipationPhaseEditor';
+import { validateParticipationPhases } from '../lib/participation';
+import { courseOverviewPages } from '../site/coursePresentation';
+import CourseOverviewEditor from '../components/CourseOverviewEditor';
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { BrutalistLoader } from "../components/Loader";
 import {
   Shield,
@@ -180,9 +184,10 @@ const handlePermissionChange = (
 export default function AdminPanel() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [query] = useSearchParams();
   const [activeTab, setActiveTab] = useState<
     "users" | "courses" | "certifications"
-  >("users");
+  >(()=>query.get("tab")==="courses"?"courses":"users");
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [courses, setCourses] = useState<any[]>([]);
@@ -194,7 +199,7 @@ export default function AdminPanel() {
   const [certLoading, setCertLoading] = useState(false);
   const [enrolledCertIds, setEnrolledCertIds] = useState<string[]>([]);
   const [enrolledCourseSlugs, setEnrolledCourseSlugs] = useState<string[]>([]);
-  const [showCourseForm, setShowCourseForm] = useState(false);
+  const [showCourseForm, setShowCourseForm] = useState(()=>query.get("new")==="1");
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [courseFormData, setCourseFormData] = useState<any>({
     title: "",
@@ -210,6 +215,7 @@ export default function AdminPanel() {
     endDate: "",
     modules: 1,
     outline: [],
+    subPages: [],
     linkedCerts: [],
     hasMicrocert: false,
     microcertFee: 0,
@@ -567,6 +573,7 @@ export default function AdminPanel() {
       const method = editingCourseId ? "PUT" : "POST";
 
       const payload = { ...courseFormData };
+      payload.subPages=courseOverviewPages(payload);
 
       // Format textareas for DB storage
       if (typeof payload.highlights === "string") {
@@ -611,6 +618,8 @@ export default function AdminPanel() {
       }
 
       payload.registrationCard = {
+        ...(payload.registrationCard||{}),
+        actionPhases:payload.actionPhases||[],
         title: payload.regTitle || "",
         description: payload.regDesc || "",
         buttonText: payload.regBtnText || "",
@@ -625,6 +634,9 @@ export default function AdminPanel() {
         paymentDeadline: payload.regPaymentDeadline || "",
       };
 
+      const phaseError=validateParticipationPhases(payload.registrationCard.actionPhases);
+      if(phaseError){alert(phaseError);return;}
+      delete payload.actionPhases;
       delete payload.instructorGroups;
       delete payload.taGroups;
       delete payload.regTitle;
@@ -673,6 +685,7 @@ export default function AdminPanel() {
       endDate: "",
       modules: 1,
       outline: [],
+    subPages: [],
       linkedCerts: [],
       hasMicrocert: false,
       microcertFee: 0,
@@ -705,11 +718,8 @@ export default function AdminPanel() {
     courseId: string,
     currentStatus: string,
   ) => {
-    let newStatus = "Open Enrollment";
-    if (currentStatus === "Draft") newStatus = "Enrollment Open";
-    else if (currentStatus === "Enrollment Open") newStatus = "Published";
-    else if (currentStatus === "Published") newStatus = "Closed";
-    else if (currentStatus === "Closed") newStatus = "Published"; // Allow toggling back
+    const transitions: Record<string,string> = { Draft: 'Upcoming', Upcoming: 'Ongoing', Ongoing: 'Completed', Completed: 'Archived', Archived: 'Upcoming', 'Enrollment Open': 'Upcoming', Published: 'Ongoing', Closed: 'Upcoming' };
+    const newStatus = transitions[currentStatus] || 'Upcoming';
 
     try {
       const res = await fetch(`/api/lms/courses/${courseId}`, {
@@ -734,6 +744,9 @@ export default function AdminPanel() {
   const startEditingCourse = (course: any) => {
     setEditingCourseId(course._id);
     setCourseFormData({
+      __v: course.__v,
+      subPages: course.subPages || [],
+      registrationState: course.registrationState || (course.storedStatus === "Enrollment Open" ? "open" : "closed"),
       title: course.title || "",
       courseCode: course.courseCode || "",
       description: course.description || "",
@@ -769,6 +782,8 @@ export default function AdminPanel() {
       materials: Array.isArray(course.materials)
         ? course.materials.map((m: any) => `${m.name}:${m.url}`).join("\n")
         : course.materials || "",
+      registrationCard:course.registrationCard||{},
+      actionPhases:course.registrationCard?.actionPhases||[],
       regTitle: course.registrationCard?.title || "",
       regDesc: course.registrationCard?.description || "",
       regBtnText: course.registrationCard?.buttonText || "",
@@ -833,6 +848,7 @@ export default function AdminPanel() {
         <h1 className="text-4xl md:text-5xl font-serif font-black italic tracking-tighter mb-4">
           Admin Panel
         </h1>
+          <a href="/admin/editorial" className="inline-block underline my-3">Publishing dashboard & revision recovery →</a>
         <p className="font-mono text-xs opacity-60">
           Manage users, courses, and platform settings.
         </p>
@@ -920,7 +936,7 @@ export default function AdminPanel() {
                           </td>
                           <td className="py-4 px-2">
                             {user?.role === "superadmin" &&
-                            u._id !== user?.token ? (
+                            u._id !== user?.id ? (
                               <select
                                 className="p-1 border border-ink bg-paper text-[10px] uppercase font-bold focus:outline-none"
                                 value={u.role}
@@ -1097,23 +1113,7 @@ export default function AdminPanel() {
                         />
                       </div>
 
-                      <div>
-                        <label className="block font-mono text-[9px] font-black uppercase tracking-widest opacity-50 mb-1">
-                          Syllabus Outline (One topic/module per line)
-                        </label>
-                        <textarea
-                          rows={4}
-                          className="w-full p-3 border border-ink bg-paper font-mono text-xs focus:outline-none"
-                          placeholder="Field Methods for Data Collection&#10;Ethics and Engagement&#10;ASR Model Training"
-                          value={courseFormData.curriculum || ""}
-                          onChange={(e) =>
-                            setCourseFormData({
-                              ...courseFormData,
-                              curriculum: e.target.value,
-                            })
-                          }
-                        />
-                      </div>
+                      <p className="text-sm">Edit module titles and details in Course overview below.</p>
 
                       <div>
                         <label className="block font-mono text-[9px] font-black uppercase tracking-[0.1em] opacity-50 mb-1">
@@ -1240,10 +1240,12 @@ export default function AdminPanel() {
                         }
                       >
                         <option value="Draft">Draft</option>
-                        <option value="Published">Published</option>
-                        <option value="Enrollment Open">Enrollment Open</option>
-                        <option value="Closed">Closed</option>
+                        <option value="Upcoming">Upcoming</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Archived">Archived</option>
                       </select>
+                      <label className="block mt-3 text-xs">Registration availability<select className="block w-full border p-3" value={courseFormData.registrationState || 'closed'} onChange={e=>setCourseFormData({...courseFormData,registrationState:e.target.value})}><option value="closed">Closed</option><option value="open">Open</option></select></label>
                     </div>
                     <div>
                       <label className="block font-mono text-[9px] font-bold uppercase tracking-widest opacity-50 mb-1">
@@ -1450,29 +1452,8 @@ export default function AdminPanel() {
                         }
                       />
                     </div>
-                    <div className="md:col-span-2">
-                      <label className="block font-mono text-[9px] font-bold uppercase tracking-widest opacity-50 mb-1">
-                        Outline (comma separated module names)
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full p-3 border border-ink bg-paper font-mono text-xs focus:outline-none"
-                        placeholder="Introduction, Deep Dive, Final Project"
-                        value={
-                          Array.isArray(courseFormData.outline)
-                            ? courseFormData.outline.join(", ")
-                            : courseFormData.outline || ""
-                        }
-                        onChange={(e) =>
-                          setCourseFormData({
-                            ...courseFormData,
-                            outline: e.target.value
-                              .split(",")
-                              .map((s: string) => s.trim()),
-                          })
-                        }
-                      />
-                    </div>
+                    <ParticipationPhaseEditor value={courseFormData.actionPhases||[]} onChange={phases=>setCourseFormData({...courseFormData,actionPhases:phases})}/>
+                    <CourseOverviewEditor record={courseFormData} onChange={pages=>setCourseFormData({...courseFormData,subPages:pages})}/>
                   </div>
                   <div className="md:col-span-2">
                     <label className="block font-mono text-[9px] font-bold uppercase tracking-widest opacity-50 mb-1 mt-4">
@@ -2318,9 +2299,9 @@ export default function AdminPanel() {
                               return true;
                             return (
                               c.instructors?.some(
-                                (i: any) => i.user === user?.token,
+                                (i: any) => i.user === user?.id,
                               ) ||
-                              c.tas?.some((t: any) => t.user === user?.token)
+                              c.tas?.some((t: any) => t.user === user?.id)
                             );
                           }
                           return status === tab.id;
@@ -2362,8 +2343,8 @@ export default function AdminPanel() {
                           return true;
                         return (
                           c.instructors?.some(
-                            (i: any) => i.user === user?.token,
-                          ) || c.tas?.some((t: any) => t.user === user?.token)
+                            (i: any) => i.user === user?.id,
+                          ) || c.tas?.some((t: any) => t.user === user?.id)
                         );
                       }
                       return status === courseStatusTab;
@@ -2390,9 +2371,9 @@ export default function AdminPanel() {
                               return true;
                             return (
                               c.instructors?.some(
-                                (i: any) => i.user === user?.token,
+                                (i: any) => i.user === user?.id,
                               ) ||
-                              c.tas?.some((t: any) => t.user === user?.token)
+                              c.tas?.some((t: any) => t.user === user?.id)
                             );
                           }
                           return status === courseStatusTab;
@@ -2401,17 +2382,17 @@ export default function AdminPanel() {
                           const hasEditAccess =
                             user?.role === "superadmin" ||
                             user?.role === "admin" ||
-                            course.createdBy === user?.token ||
+                            course.createdBy === user?.id ||
                             course.instructors?.some(
-                              (i: any) => i.user === user?.token,
+                              (i: any) => i.user === user?.id,
                             ) ||
                             course.tas?.some(
-                              (t: any) => t.user === user?.token,
+                              (t: any) => t.user === user?.id,
                             );
                           const hasDeleteAccess =
                             user?.role === "superadmin" ||
                             user?.role === "admin" ||
-                            course.createdBy === user?.token;
+                            course.createdBy === user?.id;
 
                           const getStatusBtnLabel = (status: string) => {
                             if (status === "Draft") return "Open Enrollment";
@@ -2721,9 +2702,10 @@ export default function AdminPanel() {
                         }
                       >
                         <option value="Draft">Draft</option>
-                        <option value="Published">Published</option>
-                        <option value="Enrollment Open">Enrollment Open</option>
-                        <option value="Closed">Closed</option>
+                        <option value="Upcoming">Upcoming</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Archived">Archived</option>
                       </select>
                     </div>
                     <div>
@@ -2942,7 +2924,7 @@ export default function AdminPanel() {
                   ) : certifications.length > 0 ? (
                     <div className="grid gap-4">
                       {certifications.map((cert) => {
-                        const hasEditAccess = cert.createdBy === user?.token;
+                        const hasEditAccess = cert.createdBy === user?.id;
 
                         const getStatusBtnLabel = (status: string) => {
                           if (status === "Draft") return "Open Enrollment";

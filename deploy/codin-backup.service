@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up CoDIN production Atlas database
+[Service]
+Type=oneshot
+User=codin
+Group=codin
+WorkingDirectory=/opt/codin/current
+EnvironmentFile=/etc/codin.env
+Environment=BACKUP_DIR=/var/backups/codin
+ExecStart=/opt/codin/current/.tools/node/bin/node scripts/database.mjs backup --production
+UMask=0077

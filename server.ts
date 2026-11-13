@@ -1,7 +1,16 @@
+import { registrationAvailability, validateParticipationPhases } from './src/lib/participation';
+import { installLearning } from './server/learning';
+import { getProjectStatus } from './src/lib/courseStatus';
+import { installResources } from './server/resources';
+import { hostingConfig } from './server/config';
 import dotenv from 'dotenv';
 dotenv.config();
 
 import express from 'express';
+import { databaseConfig, outboundEnabled } from './server/config';
+import { issueSession, sessionUser, revokeSession } from './server/sessions';
+import { installReliability } from './server/reliability';
+import { getEffectiveStatus, isNoticeVisible } from './src/lib/courseStatus';
 import * as cheerio from 'cheerio';
 import path from 'path';
 import fs from 'fs';
@@ -40,8 +49,7 @@ const defaultProjects: any[] = seedsData.projects || [];
 const defaultCentres: any[] = seedsData.centres || [];
 const defaultPeople: any[] = seedsData.people || [];
 
-// Using encoded '@' -> '%40' for the password
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://ritesh_w2m:Ak%40dem!_2026%40K0mun!t!@codin-website.uksggxt.mongodb.net/?appName=CoDIN-Website";
+const { uri: MONGODB_URI, dbName: MONGODB_DB_NAME } = databaseConfig();
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -56,18 +64,17 @@ const transporter = nodemailer.createTransport({
 function hashPassword(password: string): string {
   if (!password) return '';
   const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return `${salt}:${hash}`;
+  const hash = crypto.pbkdf2Sync(password, salt, 210000, 64, 'sha512').toString('hex');
+  return `v2:${salt}:${hash}`;
 }
-
 function verifyPassword(password: string, storedHash: string): boolean {
-  if (!password || !storedHash) return false;
-  if (!storedHash.includes(':')) {
-    return password === storedHash;
-  }
-  const [salt, hash] = storedHash.split(':');
-  const checkHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
-  return hash === checkHash;
+  if (!password || !storedHash || !storedHash.includes(':')) return false;
+  const modern = storedHash.startsWith('v2:');
+  const parts = storedHash.split(':');
+  const [salt, hash] = modern ? parts.slice(1) : parts;
+  if (!salt || !/^[a-f0-9]{128}$/.test(hash || '')) return false;
+  const check = crypto.pbkdf2Sync(password, salt, modern ? 210000 : 1000, 64, 'sha512');
+  return crypto.timingSafeEqual(check, Buffer.from(hash, 'hex'));
 }
 
 // Centralized, easily editable email templates for CoDIN (Council for Diversity and Innovation)
@@ -96,10 +103,8 @@ const EMAIL_TEMPLATES = {
 };
 
 async function sendEmail(to: string, subject: string, text: string) {
-  if (!process.env.SMTP_USER) {
-    console.log(`[EMAIL SIMULATED] To: ${to} | Subject: ${subject}`);
-    console.log(`[EMAIL SIMULATED CONTENT]: ${text}`);
-    return;
+  if (!outboundEnabled() || !process.env.SMTP_USER) {
+    throw new Error('Email delivery is disabled. Configure production SMTP and enable outbound delivery; use a dedicated administrator account for local development.');
   }
   try {
     await transporter.sendMail({
@@ -110,12 +115,14 @@ async function sendEmail(to: string, subject: string, text: string) {
     });
     console.log(`[EMAIL SENT] To: ${to}`);
   } catch (error) {
-    console.error(`[EMAIL ERROR] Failed to send email to ${to}`, error);
+    console.error('[EMAIL ERROR] Delivery failed');
+    throw new Error('Email delivery failed. Check SMTP configuration.');
   }
 }
 
-// In-Memory Fallbacks (used if DB connection fails)
-let isDbConnected = false;
+// Legacy demo arrays remain for explicit seed commands only. Request branches always
+// use durable storage; readiness is checked independently and never enables fallbacks.
+const usePersistentStorage = true;
 let inMemoryUsers: any[] = [];
 let inMemoryEnrollments: any[] = [];
 let inMemoryJobApplications: any[] = [];
@@ -124,10 +131,18 @@ let inMemoryOTPs: any[] = [];
 // Database Setup
 async function connectDB() {
   try {
-    await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 5000 });
-    isDbConnected = true;
-    console.log('MongoDB connected successfully');
-    
+    await mongoose.connect(MONGODB_URI, { dbName: MONGODB_DB_NAME, serverSelectionTimeoutMS: 10000, autoIndex: false });
+    await mongoose.connection.collection('sessions').createIndex({ tokenHash: 1 }, { unique: true });
+    await mongoose.connection.collection('sessions').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await mongoose.connection.collection('oauthStates').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await mongoose.connection.collection('contentRevisions').createIndex({ collection: 1, recordId: 1, createdAt: -1 });
+    console.log(`MongoDB ready: ${MONGODB_DB_NAME}`);
+  } catch {
+    console.error('MongoDB unavailable. Check credentials, Atlas network access and database name.');
+  }
+}
+async function runExplicitSeeds() {
+  if (process.env.NODE_ENV === 'production' || MONGODB_DB_NAME !== 'test') throw new Error('Demo seeds are only allowed in test');
     // Seed initial courses if empty
     const count = await Course.countDocuments();
     if (count === 0) {
@@ -287,9 +302,7 @@ async function connectDB() {
     } else {
       console.log('[MIGRATION] All database user passwords are safe and already hashed.');
     }
-  } catch (error) {
-    console.error('MongoDB connection error, falling back to in-memory storage:', error);
-  }
+
 }
 
 // Schemas & Models
@@ -329,6 +342,9 @@ const certificationSchema = new mongoose.Schema({
     courseId: { type: String }, 
     isOptional: { type: Boolean, default: false }
   }],
+  publicationState: { type: String, enum: ['draft','published','archived'] },
+  lifecycle: { type: String, enum: ['Upcoming','Ongoing','Completed'] },
+  registrationState: { type: String, enum: ['open','closed'] },
   status: { type: String, default: 'Draft' },
   startDate: { type: String },
   endDate: { type: String },
@@ -376,6 +392,9 @@ const courseSchema = new mongoose.Schema({
   duration: { type: String },
   startDate: { type: String },
   endDate: { type: String },
+  publicationState: { type: String, enum: ['draft','published','archived'] },
+  lifecycle: { type: String, enum: ['Upcoming','Ongoing','Completed'] },
+  registrationState: { type: String, enum: ['open','closed'] },
   status: { type: String, default: 'Draft' }, // Draft, Published, Enrollment Open, Closed
   deleted: { type: Boolean, default: false },
   modules: { type: Number, default: 0 },
@@ -436,6 +455,8 @@ const courseSchema = new mongoose.Schema({
     description: { type: String },
     buttonText: { type: String },
     buttonLink: { type: String },
+    paymentDeadline: { type: String },
+    actionPhases: [mongoose.Schema.Types.Mixed],
     highlights: [{ type: String }],
     paymentMsgChoice: { type: String, default: 'markdown' },
     paymentMarkdown: { type: String },
@@ -469,6 +490,9 @@ const eventSchema = new mongoose.Schema({
   image: { type: String },
   fee: { type: Number, default: 0 },
   completedFee: { type: Number, default: 0 },
+  publicationState: { type: String, enum: ['draft','published','archived'] },
+  lifecycle: { type: String, enum: ['Upcoming','Ongoing','Completed'] },
+  registrationState: { type: String, enum: ['open','closed'] },
   status: { type: String, enum: ['Draft', 'Upcoming', 'Ongoing', 'Completed', 'Archived'], default: 'Draft' },
   deleted: { type: Boolean, default: false },
   associatedCentres: [{ type: String }],
@@ -497,6 +521,8 @@ const eventSchema = new mongoose.Schema({
     description: { type: String },
     buttonText: { type: String },
     buttonLink: { type: String },
+    paymentDeadline: { type: String },
+    actionPhases: [mongoose.Schema.Types.Mixed],
     highlights: [{ type: String }],
     paymentMsgChoice: { type: String, default: 'markdown' },
     paymentMarkdown: { type: String },
@@ -524,6 +550,7 @@ const EventModel = mongoose.model('Event', eventSchema);
 const Registration = mongoose.model('Registration', registrationSchema);
 
 const announcementSchema = new mongoose.Schema({
+  deadline: String,
   title: { type: String, required: true },
   category: { type: String, default: 'General' },
   date: { type: String, required: true },
@@ -531,11 +558,16 @@ const announcementSchema = new mongoose.Schema({
   link: { type: String, default: '' },
   status: { type: String, default: 'Ongoing' },
   highlighted: { type: Boolean, default: false },
+  publishAt: { type: String },
+  expiresAt: { type: String },
+  pinned: { type: Boolean, default: false },
+  sourceId: { type: String },
   showInBulletin: { type: Boolean, default: true },
   deleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 const w2mNotificationSchema = new mongoose.Schema({
+  deadline: String,
   title: { type: String, required: true },
   type: { type: String, default: 'General' },
   date: { type: String, required: true },
@@ -544,6 +576,10 @@ const w2mNotificationSchema = new mongoose.Schema({
   actionLink: { type: String, default: '' },
   badge: { type: String, default: '' },
   status: { type: String, default: 'Ongoing' },
+  publishAt: { type: String },
+  expiresAt: { type: String },
+  pinned: { type: Boolean, default: false },
+  sourceId: { type: String },
   showInBulletin: { type: Boolean, default: true },
   deleted: { type: Boolean, default: false }
 }, { timestamps: true });
@@ -1074,60 +1110,62 @@ let inMemorySubmissions: any[] = [];
 let inMemoryGlossaryTerms: any[] = [];
 
 async function startServer() {
-  // DON'T await connectDB() before app.listen(), so it doesn't block Cloud Run startup
-  connectDB();
+  await connectDB();
+  if (process.argv.includes('--seed')) {
+    if (mongoose.connection.readyState !== 1) throw new Error('Database unavailable');
+    await runExplicitSeeds();
+    await mongoose.disconnect();
+    return;
+  }
 
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
-  app.use(cors());
+  app.disable('x-powered-by');
+  if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
+  const hosting = hostingConfig();
+  app.use(cors({ origin: hosting.origins, credentials: true, methods: ['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'], allowedHeaders: ['Content-Type','Authorization','If-Match'], exposedHeaders: ['ETag'] }));
+  app.get('/health/live', (_req, res) => res.json({ ok: true }));
+  app.get('/health/ready', (_req, res) => res.status(mongoose.connection.readyState === 1 ? 200 : 503).json({ ready: mongoose.connection.readyState === 1 }));
+  app.use('/api', (_req, res, next) => {
+    if (mongoose.connection.readyState !== 1) return res.status(503).json({ error: 'Database unavailable. Changes have not been saved.' });
+    next();
+  });
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
+  app.use('/api', (req, res, next) => {
+    if (!outboundEnabled() && (/google-proxy/.test(req.path) && req.method !== 'GET' || /upload-cloudinary|gemini|generate-ai/.test(req.path))) return res.status(403).json({ error: 'External writes are disabled in development' });
+    next();
+  });
 
   // === Decoupled LMS API Router ===
   const apiRouter = express.Router();
-
-  // Add simple auth middleware
-  const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token provided' });
-    const token = authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Invalid token format' });
-    
-    let user;
-    if (isDbConnected) {
-      if (token && token !== 'undefined' && token !== 'null' && mongoose.Types.ObjectId.isValid(token)) {
-        user = await User.findById(token);
-      } else {
-        user = null;
-      }
-    } else {
-      user = inMemoryUsers.find(u => u._id === token);
+  apiRouter.use((req,res,next)=>{
+    if(['POST','PUT','PATCH'].includes(req.method)&&/^\/(courses|events)(\/[^/]+)?$/.test(req.path)&&req.body?.registrationCard?.actionPhases!==undefined) {
+      const error=validateParticipationPhases(req.body.registrationCard.actionPhases);
+      if(error)return res.status(400).json({error});
     }
-    
-    if (!user) return res.status(401).json({ error: 'User not found' });
-    // @ts-ignore
-    req.user = user;
     next();
+  });
+  const participationRecord = async (slug:string) => {
+    const found:any=usePersistentStorage
+      ? await Course.findOne({slug}).lean()||await EventModel.findOne({slug}).lean()
+      : inMemoryCourses.find(c=>c.slug===slug)||inMemoryEvents.find(e=>e.slug===slug);
+    return found?{...found,registrationCard:{...(found.eventDetails?.registrationCard||{}),...(found.registrationCard||{})}}:null;
   };
+
 
   const optionalAuth = async (req: express.Request) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return null;
-    const token = authHeader.split(' ')[1];
-    if (!token || token === 'undefined' || token === 'null') return null;
-    
-    let user = null;
-    if (isDbConnected) {
-      if (mongoose.Types.ObjectId.isValid(token)) {
-        user = await User.findById(token);
-      }
-    } else {
-      user = inMemoryUsers.find(u => u._id === token);
-    }
-    return user;
+    return sessionUser(req.headers.authorization?.split(' ')[1]);
   };
-
+  const authMiddleware = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    try {
+      const user = await optionalAuth(req);
+      if (!user) return res.status(401).json({ error: 'Sign in again: your session is missing or expired.' });
+      (req as any).user = user;
+      next();
+    } catch { res.status(503).json({ error: 'Authentication temporarily unavailable' }); }
+  };
   const requireAdmin = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     // @ts-ignore
     const userRole = req.user?.role;
@@ -1146,13 +1184,106 @@ async function startServer() {
     next();
   };
 
-  apiRouter.post('/login', async (req, res) => {
+  // Every write requires a real session, including legacy routes that accepted a user ID.
+  apiRouter.use(async (req, res, next) => {
+    try {
+      if (/^\/(login|register|register-confirm|forgot-password[^/]*|reset-password[^/]*|auth\/)/.test(req.path)) return next();
+      const user = await optionalAuth(req);
+      (req as any).user = user;
+      if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method) && !user) return res.status(401).json({ error: 'Sign in required' });
+      if (/^\/(profile(?:\/|$)|change-password$|enroll$)/.test(req.path)) {
+        if (!user) return res.status(401).json({ error: 'Sign in required' });
+        req.body.userId = String(user._id);
+      }
+      if (req.path === '/users' && !['admin', 'superadmin'].includes(user?.role || '')) return res.status(403).json({ error: 'Admin required' });
+      next();
+    } catch { res.status(503).json({ error: 'Authentication temporarily unavailable' }); }
+  });
+  apiRouter.post('/logout', authMiddleware, async (req, res) => {
+    await revokeSession(req.headers.authorization?.split(' ')[1]); res.json({ success: true });
+  });
+  apiRouter.get('/session', authMiddleware, (req, res) => {
+    const user = (req as any).user;
+    res.json({ id: String(user._id), email: user.email, name: user.name, role: user.role, emails: user.emails });
+  });
+  const protectedContentRouter = express.Router();
+  installReliability(protectedContentRouter, authMiddleware, { Course, EventModel, Announcement, W2MNotification }, async (oldRecord: any, updated: any, model: any) => {
+    if (model === Course) await syncCourseParticipation(oldRecord.instructors || [], oldRecord.tas || [], updated.instructors || [], updated.tas || [], updated.title, updated.slug, updated.duration);
+    await syncEventParticipation(extractEventParticipants(oldRecord), extractEventParticipants(updated), updated.title, updated.slug, updated.location || 'Online', updated.dates || 'TBD');
+  });
+  apiRouter.use(async (req, res, next) => {
+    try {
+    const user = (req as any).user;
+    let enrolled = new Set<string>();
+    if (user) {
+      const registrations = await Registration.find({ email: { $in: user.emails?.length ? user.emails : [user.email] }, admissionStatus: 'Confirmed', paymentStatus: 'Confirmed' }).select('eventSlug').lean();
+      enrolled = new Set(registrations.map(r => r.eventSlug));
+    }
+    const original = res.json.bind(res);
+    res.json = ((body: any) => {
+      const visit = (value: any): any => {
+        if (Array.isArray(value)) return value.map(visit);
+        if (!value || typeof value !== 'object' || value instanceof Date || value instanceof mongoose.Types.ObjectId || Buffer.isBuffer(value)) return value;
+        const record = typeof value.toObject === 'function' ? value.toObject() : value;
+        if (record.slug && record.title && ('status' in record || 'modulesList' in record)) {
+          const privileged = user && (['admin','superadmin'].includes(user.role) || String(record.createdBy) === String(user._id) || [...(record.instructors || []), ...(record.tas || [])].some((i: any) => String(i.user) === String(user._id)));
+          const normalized = { ...record, storedStatus: record.storedStatus || record.status, status: record.tag !== undefined && record.id !== undefined ? getProjectStatus(record) : getEffectiveStatus(record), __v: record.__v || 0 };
+          if (!privileged && !enrolled.has(record.slug)) {
+            normalized.modulesList = (record.modulesList || []).map((m: any) => ({ _id: m._id, title: m.title, description: m.description, materials: [] }));
+            delete normalized.materials;
+            if (normalized.eventDetails) normalized.eventDetails = { ...normalized.eventDetails, modulesList: normalized.modulesList, materials: [] };
+          } else if (!privileged) {
+            const strip = (list: any[]) => (list || []).map((m: any) => ({ ...m, materials: (m.materials || []).map(({ streamKey, rtmpUrl, ...material }: any) => material) }));
+            normalized.modulesList = strip(record.modulesList);
+            if (normalized.eventDetails) normalized.eventDetails = { ...normalized.eventDetails, modulesList: strip(normalized.eventDetails.modulesList) };
+          }
+          return normalized;
+        }
+        return Object.fromEntries(Object.entries(record).map(([k, v]) => [k, visit(v)]));
+      };
+      return original(visit(body));
+    }) as any;
+    next();
+    } catch { res.status(503).json({ error: 'Database unavailable' }); }
+  });
+  apiRouter.post('/events', async (req, res, next) => {
+    try {
+      const slug = req.body.slug || String(req.body.title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      if (await Course.exists({ slug }) || await EventModel.exists({ slug })) return res.status(409).json({ error: 'This activity already exists. Open its editor to update it safely.' });
+      next();
+    } catch { res.status(503).json({ error: 'Database unavailable' }); }
+  });
+  apiRouter.use(async (req, res, next) => {
+    const match = req.path.match(/^\/events\/([^/]+)\/participants(?:\/|$)/);
+    if (!match) return next();
+    try {
+      const user = (req as any).user;
+      if (!user) return res.status(401).json({ error: 'Sign in required' });
+      if (['admin','superadmin'].includes(user.role)) return next();
+      const record: any = await Course.findOne({ slug: match[1] }).lean() || await EventModel.findOne({ slug: match[1] }).lean();
+      const assigned = record && (String(record.createdBy) === String(user._id) || [...(record.instructors || []), ...(record.tas || [])].some((m: any) => String(m.user) === String(user._id) && m.permissions?.includes('manage_users')));
+      if (!assigned) return res.status(403).json({ error: 'Participant management permission required' });
+      next();
+    } catch { res.status(503).json({ error: 'Database unavailable' }); }
+  });
+  apiRouter.use(protectedContentRouter);
+  installResources(apiRouter, authMiddleware);
+  installLearning(apiRouter, authMiddleware);
+  const loginAttempts = new Map<string, { count: number; until: number }>();
+  apiRouter.post('/login', (req, res, next) => {
+    const key = req.ip || 'unknown'; const now = Date.now();
+    let entry = loginAttempts.get(key);
+    if (!entry || entry.until < now) { entry = { count: 0, until: now + 15 * 60 * 1000 }; loginAttempts.set(key, entry); }
+    if (++entry.count > 30) return res.status(429).json({ error: 'Too many sign-in attempts. Try again later.' });
+    if (loginAttempts.size > 10000) for (const [ip, item] of loginAttempts) if (item.until < now) loginAttempts.delete(ip);
+    next();
+  }, async (req, res) => {
     try {
       const { email, password } = req.body;
       const emailLower = email.trim().toLowerCase();
       
       let user = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         user = await User.findOne({ 
           $or: [
             { email: emailLower },
@@ -1168,7 +1299,7 @@ async function startServer() {
       }
 
       return res.json({ 
-        token: user._id.toString(), 
+        token: await issueSession(user), id: user._id.toString(), 
         email: user.email, 
         name: user.name, 
         role: user.role, 
@@ -1186,7 +1317,7 @@ async function startServer() {
       const emailLower = email.trim().toLowerCase();
 
       let existing;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         existing = await User.findOne({ $or: [{ email: emailLower }, { emails: emailLower }] });
       } else {
         existing = inMemoryUsers.find(u => u.email === emailLower || (u.emails && u.emails.includes(emailLower)));
@@ -1196,10 +1327,10 @@ async function startServer() {
         return res.status(400).json({ error: 'Email already in use' });
       }
 
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otp = crypto.randomInt(100000, 1000000).toString();
       const hashedPassword = hashPassword(password);
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await OTPVerification.deleteMany({ email: emailLower, type: 'signup' });
         await OTPVerification.create({ email: emailLower, otp, name, password: hashedPassword, type: 'signup' });
       } else {
@@ -1231,8 +1362,8 @@ async function startServer() {
       const emailLower = email.trim().toLowerCase();
 
       let record;
-      if (isDbConnected) {
-        record = await OTPVerification.findOne({ email: emailLower, otp, type: 'signup' });
+      if (usePersistentStorage) {
+        record = await OTPVerification.findOne({ email: emailLower, otp, type: 'signup', createdAt: { $gt: new Date(Date.now() - 600000) } });
       } else {
         record = inMemoryOTPs.find(o => o.email === emailLower && o.otp === otp && o.type === 'signup');
       }
@@ -1244,7 +1375,7 @@ async function startServer() {
       const { name, password } = record; // password is already hashed at /register
 
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const userCount = await User.countDocuments();
         const role = userCount === 0 ? 'superadmin' : 'student';
         user = await User.create({ email: emailLower, password, name, role, emails: [emailLower] });
@@ -1257,7 +1388,7 @@ async function startServer() {
       }
 
       return res.json({ 
-        token: user._id.toString(), 
+        token: await issueSession(user), id: user._id.toString(), 
         email: user.email, 
         name: user.name, 
         role: user.role,
@@ -1275,7 +1406,7 @@ async function startServer() {
       const emailLower = email.trim().toLowerCase();
       
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         user = await User.findOne({ $or: [{ email: emailLower }, { emails: emailLower }] });
       } else {
         user = inMemoryUsers.find(u => u.email === emailLower || (u.emails && u.emails.includes(emailLower)));
@@ -1312,7 +1443,7 @@ async function startServer() {
       const targetEmail = selectedEmail ? selectedEmail.trim().toLowerCase() : emailLower;
       
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         user = await User.findOne({ $or: [{ email: emailLower }, { emails: emailLower }] });
       } else {
         user = inMemoryUsers.find(u => u.email === emailLower || (u.emails && u.emails.includes(emailLower)));
@@ -1328,9 +1459,9 @@ async function startServer() {
         return res.status(400).json({ error: 'Selected email does not match user account' });
       }
 
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otp = crypto.randomInt(100000, 1000000).toString();
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await OTPVerification.deleteMany({ email: targetEmail, type: 'reset' });
         await OTPVerification.create({ email: targetEmail, otp, type: 'reset' });
       } else {
@@ -1364,8 +1495,8 @@ async function startServer() {
       const emailLower = email.trim().toLowerCase();
 
       let record;
-      if (isDbConnected) {
-        record = await OTPVerification.findOne({ email: emailLower, otp, type: 'reset' });
+      if (usePersistentStorage) {
+        record = await OTPVerification.findOne({ email: emailLower, otp, type: 'reset', createdAt: { $gt: new Date(Date.now() - 600000) } });
       } else {
         record = inMemoryOTPs.find(o => o.email === emailLower && o.otp === otp && o.type === 'reset');
       }
@@ -1376,7 +1507,7 @@ async function startServer() {
 
       let user;
       const hashedPassword = hashPassword(newPassword);
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         user = await User.findOneAndUpdate(
           { $or: [{ email: emailLower }, { emails: emailLower }] },
           { password: hashedPassword },
@@ -1396,6 +1527,7 @@ async function startServer() {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      await mongoose.connection.collection('sessions').deleteMany({ userId: user._id });
       return res.json({ success: true, message: 'Password has been successfully updated.' });
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -1403,15 +1535,22 @@ async function startServer() {
   });
   
   // Google OAuth Endpoints
-  apiRouter.get('/auth/google/url', (req, res) => {
-    const redirectUri = req.query.redirectUri as string;
+  apiRouter.get('/auth/google/url', async (req, res) => {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) return res.status(503).json({ setupRequired: true, error: 'OAuth is not configured' });
+    const origin = hosting.api;
+    const redirectUri = `${origin}/api/lms/auth/google/callback`;
+    const state = crypto.randomBytes(32).toString('hex');
+    res.cookie('codin_oauth_google', state, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 600000, path: '/' });
+    await mongoose.connection.collection('oauthStates').insertOne({ state, provider: 'google', redirectUri, expiresAt: new Date(Date.now() + 600000) });
     const params = new URLSearchParams({
+      state,
       client_id: process.env.GOOGLE_CLIENT_ID || 'dummy_client_id_for_preview',
       redirect_uri: redirectUri || 'http://localhost:3000/api/auth/google/callback',
       response_type: 'code',
       scope: 'email profile',
     });
     
+    if (req.query.redirect === '1') return res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
     res.json({ 
       url: process.env.GOOGLE_CLIENT_ID 
         ? `https://accounts.google.com/o/oauth2/v2/auth?${params}`
@@ -1421,23 +1560,30 @@ async function startServer() {
   });
 
   apiRouter.get('/auth/google/mock-simulation', (req, res) => {
-    const redirectUri = req.query.redirect_uri;
-    res.redirect(`${redirectUri}?code=mock_auth_code_for_preview`);
+    res.status(404).json({ error: 'Mock authentication is disabled' });
   });
 
   apiRouter.get('/auth/google/callback', async (req, res) => {
     try {
       const { code } = req.query;
+      const state = String(req.query.state || '');
+      const cookieState = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('codin_oauth_google='))?.split('=')[1];
+      if (!state || state !== cookieState) return res.status(401).send('Invalid OAuth state');
+      const oauthState = await mongoose.connection.collection('oauthStates').findOneAndDelete({ state, provider: 'google', expiresAt: { $gt: new Date() } });
+      if (!oauthState) return res.status(401).send('OAuth request expired');
+      res.clearCookie('codin_oauth_google', { path: '/' });
+
       
-      let mockEmail = "google-sso-user@example.com";
+      let mockEmail = ''; 
       let mockName = "Google User";
       
       const hasClientKeys = process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET;
+      if (!hasClientKeys || !code || String(code).startsWith('mock_')) return res.status(503).send('OAuth is not configured');
 
       if (hasClientKeys && code && code !== 'mock_auth_code_for_preview') {
         try {
           const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-          const redirectUri = `${appUrl}/api/lms/auth/google/callback`;
+          const redirectUri = oauthState.redirectUri;
           const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1455,7 +1601,7 @@ async function startServer() {
               headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
             });
             const userData = await userRes.json();
-            if (userData.email) {
+            if (userData.email && userData.verified_email) {
               mockEmail = userData.email.trim().toLowerCase();
               mockName = userData.name || mockEmail.split('@')[0];
             }
@@ -1465,8 +1611,9 @@ async function startServer() {
         }
       }
       
+      if (!mockEmail) return res.status(401).send('Identity verification failed');
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
          user = await User.findOne({ $or: [{ email: mockEmail }, { emails: mockEmail }] });
          if (!user) {
            const userCount = await User.countDocuments();
@@ -1482,13 +1629,13 @@ async function startServer() {
          }
       }
       
-      const payload = JSON.stringify({ token: user._id.toString(), email: user.email, name: user.name, role: user.role, emails: user.emails || [user.email] });
+      const payload = JSON.stringify({ token: await issueSession(user), id: user._id.toString(), email: user.email, name: user.name, role: user.role, emails: user.emails || [user.email] });
       res.send(`
         <html>
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', payload: ${payload} }, '*');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', payload: ${payload} }, ${JSON.stringify(hosting.app)});
                 window.close();
               } else {
                 window.location.href = '/';
@@ -1506,14 +1653,21 @@ async function startServer() {
   // GitHub Apps User Identification / OAuth Endpoints
   // NOTE: GitHub Apps use the exact same OAuth Web flow under the hood, with
   // GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET maps to the GitHub App's credentials.
-  apiRouter.get('/auth/github/url', (req, res) => {
-    const redirectUri = req.query.redirectUri as string;
+  apiRouter.get('/auth/github/url', async (req, res) => {
+    if (!process.env.GITHUB_CLIENT_ID || !process.env.GITHUB_CLIENT_SECRET) return res.status(503).json({ setupRequired: true, error: 'OAuth is not configured' });
+    const origin = hosting.api;
+    const redirectUri = `${origin}/api/lms/auth/github/callback`;
+    const state = crypto.randomBytes(32).toString('hex');
+    res.cookie('codin_oauth_github', state, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 600000, path: '/' });
+    await mongoose.connection.collection('oauthStates').insertOne({ state, provider: 'github', redirectUri, expiresAt: new Date(Date.now() + 600000) });
     const params = new URLSearchParams({
+      state,
       client_id: process.env.GITHUB_CLIENT_ID || 'dummy_github_client_id_for_preview',
       redirect_uri: redirectUri || 'http://localhost:3000/api/auth/github/callback',
       // Note: for GitHub Apps, scope is ignored as it is determined by the permissions configured on your GitHub App (e.g. Email addresses read-only permissions).
     });
     
+    if (req.query.redirect === '1') return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
     res.json({ 
       url: process.env.GITHUB_CLIENT_ID 
         ? `https://github.com/login/oauth/authorize?${params}`
@@ -1523,22 +1677,29 @@ async function startServer() {
   });
 
   apiRouter.get('/auth/github/mock-simulation', (req, res) => {
-    const redirectUri = req.query.redirect_uri;
-    res.redirect(`${redirectUri}?code=mock_github_code_for_preview`);
+    res.status(404).json({ error: 'Mock authentication is disabled' });
   });
 
   apiRouter.get('/auth/github/callback', async (req, res) => {
     try {
       const { code } = req.query;
-      let mockEmail = "github-sso-user@example.com";
+      const state = String(req.query.state || '');
+      const cookieState = req.headers.cookie?.split(';').map(v => v.trim()).find(v => v.startsWith('codin_oauth_github='))?.split('=')[1];
+      if (!state || state !== cookieState) return res.status(401).send('Invalid OAuth state');
+      const oauthState = await mongoose.connection.collection('oauthStates').findOneAndDelete({ state, provider: 'github', expiresAt: { $gt: new Date() } });
+      if (!oauthState) return res.status(401).send('OAuth request expired');
+      res.clearCookie('codin_oauth_github', { path: '/' });
+
+      let mockEmail = ''; 
       let mockName = "GitHub User";
 
       const hasClientKeys = process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET;
+      if (!hasClientKeys || !code || String(code).startsWith('mock_')) return res.status(503).send('OAuth is not configured');
 
       if (hasClientKeys && code && code !== 'mock_github_code_for_preview') {
         try {
           const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
-          const redirectUri = `${appUrl}/api/lms/auth/github/callback`;
+          const redirectUri = oauthState.redirectUri;
           const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
             method: 'POST',
             headers: { 
@@ -1564,21 +1725,13 @@ async function startServer() {
             if (userData) {
               mockName = userData.name || userData.login;
               
-              if (userData.email) {
-                mockEmail = userData.email.trim().toLowerCase();
-              } else {
-                const emailsRes = await fetch('https://api.github.com/user/emails', {
-                  headers: {
-                    'Authorization': `Bearer ${tokenData.access_token}`,
-                    'User-Agent': 'w2m-academy-app'
-                  }
-                });
-                const emailsData = await emailsRes.json();
-                if (Array.isArray(emailsData) && emailsData.length > 0) {
-                  const primaryEmailObj = emailsData.find(e => e.primary) || emailsData[0];
-                  mockEmail = primaryEmailObj.email.trim().toLowerCase();
-                }
-              }
+              const emailsRes = await fetch('https://api.github.com/user/emails', {
+                headers: { Authorization: `Bearer ${tokenData.access_token}`, 'User-Agent': 'w2m-academy-app' }
+              });
+              const emailsData = await emailsRes.json();
+              const verified = Array.isArray(emailsData) ? emailsData.filter(e => e.verified) : [];
+              const primary = verified.find(e => e.primary) || verified[0];
+              if (primary?.email) mockEmail = primary.email.trim().toLowerCase();
             }
           }
         } catch (tokenErr) {
@@ -1586,8 +1739,9 @@ async function startServer() {
         }
       }
 
+      if (!mockEmail) return res.status(401).send('Identity verification failed');
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         user = await User.findOne({ $or: [{ email: mockEmail }, { emails: mockEmail }] });
         if (!user) {
           const userCount = await User.countDocuments();
@@ -1603,13 +1757,13 @@ async function startServer() {
         }
       }
 
-      const payload = JSON.stringify({ token: user._id.toString(), email: user.email, name: user.name, role: user.role, emails: user.emails || [user.email] });
+      const payload = JSON.stringify({ token: await issueSession(user), id: user._id.toString(), email: user.email, name: user.name, role: user.role, emails: user.emails || [user.email] });
       res.send(`
         <html>
           <body>
             <script>
               if (window.opener) {
-                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', payload: ${payload} }, '*');
+                window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', payload: ${payload} }, ${JSON.stringify(hosting.app)});
                 window.close();
               } else {
                 window.location.href = '/';
@@ -1632,7 +1786,7 @@ async function startServer() {
       }
 
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           user = await User.findById(userId);
           if (user && !verifyPassword(currentPassword, user.password || '')) {
@@ -1657,6 +1811,7 @@ async function startServer() {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      await mongoose.connection.collection('sessions').deleteMany({ userId: user._id });
       return res.json({ success: true, message: 'Password changed successfully' });
     } catch (e) {
       res.status(500).json({ error: String(e) });
@@ -1673,7 +1828,7 @@ async function startServer() {
       const emailTrimmed = emailToAdd.trim().toLowerCase();
 
       let otherUser;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         otherUser = await User.findOne({
           _id: { $ne: new mongoose.Types.ObjectId(userId) },
           $or: [{ email: emailTrimmed }, { emails: emailTrimmed }]
@@ -1687,7 +1842,7 @@ async function startServer() {
       }
 
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           user = await User.findById(userId);
           if (user) {
@@ -1717,7 +1872,7 @@ async function startServer() {
       }
 
       return res.json({ 
-        token: user._id.toString(), 
+        token: await issueSession(user), id: user._id.toString(), 
         email: user.email, 
         name: user.name, 
         role: user.role,
@@ -1738,7 +1893,7 @@ async function startServer() {
       const emailTrimmed = emailToRemove.trim().toLowerCase();
 
       let user;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           user = await User.findById(userId);
           if (user) {
@@ -1768,7 +1923,7 @@ async function startServer() {
       }
 
       return res.json({ 
-        token: user._id.toString(), 
+        token: await issueSession(user), id: user._id.toString(), 
         email: user.email, 
         name: user.name, 
         role: user.role,
@@ -1785,7 +1940,7 @@ async function startServer() {
       if (!userId) return res.status(400).json({ error: 'Missing userId' });
       
       let updatedUser;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
          if (userId && userId !== 'undefined' && userId !== 'null' && mongoose.Types.ObjectId.isValid(userId)) {
            updatedUser = await User.findByIdAndUpdate(userId, { name }, { new: true });
          } else {
@@ -1798,41 +1953,34 @@ async function startServer() {
          inMemoryUsers[idx].name = name;
          updatedUser = inMemoryUsers[idx];
       }
-      return res.json({ token: updatedUser._id.toString(), email: updatedUser.email, name: updatedUser.name, emails: updatedUser.emails || [updatedUser.email] });
+      return res.json({ token: await issueSession(updatedUser), id: updatedUser._id.toString(), email: updatedUser.email, name: updatedUser.name, emails: updatedUser.emails || [updatedUser.email] });
     } catch (e) {
       res.status(500).json({ error: String(e) });
     }
   });
 
-  apiRouter.post('/enroll', async (req, res) => {
+  apiRouter.post('/enroll', authMiddleware, async (req, res) => {
     try {
-      const { userId, courseSlug } = req.body;
-      if (!userId || !courseSlug) return res.status(400).json({ error: 'Missing params' });
-      
-      let userDoc: any = null;
-      if (isDbConnected) {
-        if (!userId || userId === 'undefined' || userId === 'null' || !mongoose.Types.ObjectId.isValid(userId)) {
-          return res.status(400).json({ error: 'Invalid userId parameter' });
-        }
-        userDoc = await User.findById(userId);
-      } else {
-        userDoc = inMemoryUsers.find(u => u._id === userId);
-      }
-
-      if (!userDoc) {
-        return res.status(404).json({ error: 'User not found' });
-      }
+      const courseSlug=req.body.courseSlug||req.body.slug;
+      if(!courseSlug)return res.status(400).json({error:'A course or event is required'});
+      // Resolve the participant from the authenticated session, including legacy callers passing a session token as userId.
+      const userDoc:any=(req as any).user;
 
       // Find the fee from course or event
       let fee = 0;
       let foundCourse: any = null;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         foundCourse = await Course.findOne({ slug: courseSlug }) || await EventModel.findOne({ slug: courseSlug });
       } else {
         foundCourse = inMemoryCourses.find(c => c.slug === courseSlug) || inMemoryEvents.find(e => e.slug === courseSlug);
       }
 
+      if(!foundCourse)return res.status(404).json({error:'Course or event not found'});
+      const existingParticipant=usePersistentStorage?await Registration.findOne({eventSlug:courseSlug,email:userDoc.email}).lean():inMemoryRegistrations.find(p=>p.eventSlug===courseSlug&&p.email===userDoc.email);
+      if(existingParticipant?.paymentStatus==='Confirmed'&&existingParticipant?.admissionStatus==='Confirmed')return res.json({success:true,participant:existingParticipant});
+      const enrollmentGate=registrationAvailability(foundCourse,existingParticipant);
+      if(!enrollmentGate.allowed)return res.status(403).json({error:enrollmentGate.reason});
       if (foundCourse) {
         fee = foundCourse.registrationCard?.fee || foundCourse.fee || 0;
       }
@@ -1845,7 +1993,7 @@ async function startServer() {
       const paymentStatus = autoConfirm ? 'Confirmed' : 'Pending';
       const amountPaid = autoConfirm ? fee : 0;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const existing = await Registration.findOne({ eventSlug: courseSlug, email: userDoc.email });
         if (existing) {
           return res.json({ success: true, message: 'Already enrolled/applied', participant: existing });
@@ -1890,11 +2038,11 @@ async function startServer() {
     }
   });
 
-  apiRouter.get('/enrollments/:userId', async (req, res) => {
+  apiRouter.get('/enrollments/:userId', authMiddleware, async (req, res) => {
     try {
-      const { userId } = req.params;
+      const userId = String((req as any).user._id);
       let email = '';
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (userId && userId !== 'undefined' && userId !== 'null' && mongoose.Types.ObjectId.isValid(userId)) {
           const userObj = await User.findById(userId);
           if (userObj) email = userObj.email;
@@ -1908,7 +2056,7 @@ async function startServer() {
         return res.json({ enrolledCourses: [] });
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const regs = await Registration.find({ email });
         return res.json({ enrolledCourses: regs.map(e => e.eventSlug) });
       } else {
@@ -1922,7 +2070,7 @@ async function startServer() {
   
   apiRouter.get('/users', authMiddleware, async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const users = await User.find({}, '-password'); // exclude passwords
         return res.json({ users });
       } else {
@@ -1944,7 +2092,7 @@ async function startServer() {
       }
 
       let updatedUser;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
          if (!targetUserId || targetUserId === 'undefined' || targetUserId === 'null' || !mongoose.Types.ObjectId.isValid(targetUserId)) {
            return res.status(400).json({ error: 'Invalid user ID format' });
          }
@@ -1964,7 +2112,7 @@ async function startServer() {
 
   apiRouter.get('/certifications', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const certs = await Certification.find({ status: { $ne: 'Draft' } });
         return res.json({ certifications: certs });
       } else {
@@ -1984,7 +2132,7 @@ async function startServer() {
       // @ts-ignore
       certData.updatedBy = req.user._id;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const cert = await Certification.create(certData);
         if (certData.courses && certData.courses.length > 0) {
             for (let c of certData.courses) {
@@ -2026,7 +2174,7 @@ async function startServer() {
       const user = req.user;
       const isSuperadmin = user.role === 'superadmin';
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const existingCert = await Certification.findById(id);
         if (!existingCert) return res.status(404).json({ error: 'Certification not found' });
         
@@ -2083,7 +2231,7 @@ async function startServer() {
 
   apiRouter.get('/courses', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const courses = await Course.find({ status: { $ne: 'Draft' }, deleted: { $ne: true } });
         return res.json({ courses });
       } else {
@@ -2098,7 +2246,7 @@ async function startServer() {
   apiRouter.get('/certifications/:id', async (req, res) => {
     try {
       const { id } = req.params;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const cert = await Certification.findById(id);
         if (!cert) return res.status(404).json({ error: 'Certification not found' });
         return res.json({ certification: cert });
@@ -2114,7 +2262,7 @@ async function startServer() {
 
   apiRouter.get('/admin/certifications', authMiddleware, async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
          const certs = await Certification.find();
          return res.json({ certifications: certs });
       } else {
@@ -2132,7 +2280,7 @@ async function startServer() {
       const isPrivileged = user && (user.role === 'admin' || user.role === 'superadmin' || user.role === 'instructor');
 
       let allCourses = [];
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         allCourses = await Course.find();
       } else {
         allCourses = inMemoryCourses;
@@ -2168,7 +2316,7 @@ async function startServer() {
       const { slug } = req.params;
       let course;
       let isEvent = false;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         course = await Course.findOne({ slug });
         if (!course) {
           course = await EventModel.findOne({ slug });
@@ -2319,7 +2467,7 @@ async function startServer() {
 
     const handleAdd = async (userId: string, role: string) => {
       let email: string | undefined;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           const u = await User.findById(userId);
           if (u) email = u.email;
@@ -2331,7 +2479,7 @@ async function startServer() {
 
       if (!email) return;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const p = await PersonModel.findOne({ email: new RegExp(`^${email}$`, 'i') });
         if (p) {
           const manualCoursesList = p.manualCourses || [];
@@ -2393,7 +2541,7 @@ async function startServer() {
 
     const handleRemove = async (userId: string) => {
       let email: string | undefined;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           const u = await User.findById(userId);
           if (u) email = u.email;
@@ -2405,7 +2553,7 @@ async function startServer() {
 
       if (!email) return;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await PersonModel.updateOne(
           { email: new RegExp(`^${email}$`, 'i') },
           { $pull: { manualCourses: { link: link } } }
@@ -2447,7 +2595,7 @@ async function startServer() {
       const slug = participant.staffSlug || pName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
       const role = participant.role || "Presenter";
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const p = await PersonModel.findOne({
           $or: [
             { slug: slug },
@@ -2522,7 +2670,7 @@ async function startServer() {
       const pName = participant.name.trim();
       const slug = participant.staffSlug || pName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await PersonModel.updateOne(
           {
             $or: [
@@ -2572,6 +2720,7 @@ async function startServer() {
       }
 
       const courseData = req.body;
+      courseData.registrationState ??= 'closed';
       
       // Auto-generate slug if not provided
       if (!courseData.slug && courseData.title) {
@@ -2583,7 +2732,7 @@ async function startServer() {
       // @ts-ignore
       courseData.updatedBy = req.user._id;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const course = await Course.create(courseData);
         if (courseData.linkedCerts && courseData.linkedCerts.length > 0) {
             for (let lc of courseData.linkedCerts) {
@@ -2627,7 +2776,7 @@ async function startServer() {
 
       let courseToUpdate;
       let isEvent = false;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
          if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
             courseToUpdate = await Course.findById(id);
             if (!courseToUpdate) {
@@ -2698,7 +2847,7 @@ async function startServer() {
       // @ts-ignore
       courseData.updatedBy = user._id;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         let course;
         if (isEvent) {
           const oldEvent = courseToUpdate;
@@ -2820,7 +2969,7 @@ async function startServer() {
 
       // Fetch course details
       let course;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(courseId)) {
           course = await Course.findById(courseId);
         } else {
@@ -2836,7 +2985,7 @@ async function startServer() {
 
       // Fetch user details to get email
       let targetUser;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(userId)) {
           targetUser = await User.findById(userId);
         }
@@ -2855,7 +3004,7 @@ async function startServer() {
       if (action === 'add') {
         const item = { user: userId, permissions: ["all"] };
         if (role === 'Instructor') {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             await Course.updateOne(
               { _id: course._id, "instructors.user": { $ne: userId } },
               { $push: { instructors: item } }
@@ -2867,7 +3016,7 @@ async function startServer() {
             }
           }
         } else {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             await Course.updateOne(
               { _id: course._id, "tas.user": { $ne: userId } },
               { $push: { tas: item } }
@@ -2881,7 +3030,7 @@ async function startServer() {
         }
 
         // Update the Person profile manualCourses
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           const p = await PersonModel.findOne({ email: new RegExp(`^${email}$`, 'i') });
           if (p) {
             const existing = (p.manualCourses || []).find((c: any) => c.link === link);
@@ -2923,7 +3072,7 @@ async function startServer() {
         }
       } else if (action === 'remove') {
         if (role === 'Instructor') {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             await Course.updateOne(
               { _id: course._id },
               { $pull: { instructors: { user: userId } } }
@@ -2934,7 +3083,7 @@ async function startServer() {
             }
           }
         } else {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             await Course.updateOne(
               { _id: course._id },
               { $pull: { tas: { user: userId } } }
@@ -2947,7 +3096,7 @@ async function startServer() {
         }
 
         // Remove from person manualCourses
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           await PersonModel.updateOne(
             { email: new RegExp(`^${email}$`, 'i') },
             { $pull: { manualCourses: { link: link } } }
@@ -2981,7 +3130,7 @@ async function startServer() {
 
       // Find event details
       let eventObj;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (mongoose.Types.ObjectId.isValid(eventId)) {
           eventObj = await EventModel.findById(eventId);
         } else {
@@ -3007,7 +3156,7 @@ async function startServer() {
           ? `${role || 'Member'} (${groupName || 'Committee'})`
           : 'Presenter';
         
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           const p = await PersonModel.findOne({
             $or: [
               { slug: slug },
@@ -3066,7 +3215,7 @@ async function startServer() {
           }
         }
       } else if (action === 'remove') {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           await PersonModel.updateOne(
             {
               $or: [
@@ -3096,16 +3245,7 @@ async function startServer() {
   // === Helper to Map Course to Event Structure ===
   const mapCourseToEvent = (course: any) => {
     const courseObj = typeof course.toObject === 'function' ? course.toObject() : course;
-    let mappedStatus = courseObj.status || 'Upcoming';
-    if (courseObj.status === 'Draft') {
-      mappedStatus = 'Draft';
-    } else if (courseObj.status === 'Enrollment Open') {
-      mappedStatus = 'Upcoming';
-    } else if (courseObj.status === 'Published') {
-      mappedStatus = 'Ongoing';
-    } else if (courseObj.status === 'Closed' || courseObj.status === 'Completed') {
-      mappedStatus = 'Archived';
-    }
+    const mappedStatus = getEffectiveStatus(courseObj);
 
     const resolvedModulesList = (courseObj.modulesList && Array.isArray(courseObj.modulesList) && courseObj.modulesList.length > 0)
       ? courseObj.modulesList
@@ -3154,6 +3294,11 @@ async function startServer() {
       slug: courseObj.slug,
       title: courseObj.title,
       type: courseObj.type || 'W2M Residential Course',
+      curriculum: courseObj.curriculum || [],
+      outline: courseObj.outline || [],
+      iteration: courseObj.iteration,
+      tagline: courseObj.tagline,
+      highlights: courseObj.highlights || [],
       dates: courseObj.dates || courseObj.startDate || 'TBD',
       startDate: courseObj.startDate,
       endDate: courseObj.endDate,
@@ -3161,7 +3306,6 @@ async function startServer() {
       description: courseObj.description || '',
       longDescription: courseObj.longDescription || courseObj.description || '',
       image: courseObj.image || '/images/default-course.jpg',
-      status: mappedStatus,
       deleted: courseObj.deleted || false,
       associatedCentres: courseObj.associatedCentres || [],
       associatedPeople: courseObj.associatedPeople || [],
@@ -3171,6 +3315,14 @@ async function startServer() {
       schedule: courseObj.schedule || [],
       subPages: courseObj.subPages || [],
       ...(courseObj.eventDetails || {}),
+      status: mappedStatus,
+      __v: courseObj.__v || 0,
+      publicationState: courseObj.publicationState,
+      lifecycle: courseObj.lifecycle,
+      registrationState: courseObj.registrationState,
+      createdBy: courseObj.createdBy,
+      instructors: courseObj.instructors,
+      tas: courseObj.tas,
       isCourse: true,
       fee: effectiveFee,
       completedFee: courseObj.completedFee !== undefined ? courseObj.completedFee : (courseObj.eventDetails?.completedFee ?? 0),
@@ -3187,7 +3339,7 @@ async function startServer() {
       const user = await optionalAuth(req);
       const showAllPrivileged = user && (user.role === 'admin' || user.role === 'superadmin');
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const eventQuery: any = {};
         if (!showAllPrivileged) {
           eventQuery.status = { $ne: 'Draft' };
@@ -3253,7 +3405,7 @@ async function startServer() {
       const { isCourse } = req.query;
 
       if (isCourse === 'true') {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           const course = await Course.findOne({ slug });
           if (course) {
             return res.json({ event: mapCourseToEvent(course) });
@@ -3267,7 +3419,7 @@ async function startServer() {
       }
 
       // Standard lookup
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const eventItem = await EventModel.findOne({ slug });
         if (!eventItem) {
           // Fallback searching in static list
@@ -3361,6 +3513,7 @@ async function startServer() {
           longDescription: eventData.longDescription || '',
           image: eventData.image || '/images/default-course.jpg',
           status: eventData.status || 'Upcoming',
+          registrationState: eventData.registrationState || 'closed',
           associatedCentres: eventData.associatedCentres || [],
           associatedPeople: eventData.associatedPeople || [],
           associatedProjects: eventData.associatedProjects || [],
@@ -3383,7 +3536,7 @@ async function startServer() {
           updatedBy: user._id
         };
 
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           let courseItem = await Course.findOne({ slug: eventData.slug });
           const oldEvent = courseItem ? (typeof courseItem.toObject === 'function' ? courseItem.toObject() : courseItem) : null;
           if (courseItem) {
@@ -3534,7 +3687,7 @@ async function startServer() {
       }
 
       // Standard Event Save
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         let eventItem = await EventModel.findOne({ slug: eventData.slug });
         const oldEvent = eventItem ? (typeof eventItem.toObject === 'function' ? eventItem.toObject() : eventItem) : null;
         if (eventItem) {
@@ -3592,7 +3745,7 @@ async function startServer() {
 
       if (!isPrivileged) {
         let targetDoc: any = null;
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           targetDoc = (await EventModel.findOne({ $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { slug: id }] })) ||
                       (await Course.findOne({ $or: [{ _id: mongoose.Types.ObjectId.isValid(id) ? id : null }, { slug: id }] }));
         } else {
@@ -3612,7 +3765,7 @@ async function startServer() {
       const isCourseEvent = isCourse === 'true' || eventData.isCourse === true || eventData.type === 'W2M Residential Course' || eventData.type === 'Residential Course' || eventData.type === 'Residential';
 
       if (isCourseEvent) {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           let existingCourse;
           if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
             existingCourse = await Course.findById(id);
@@ -3864,7 +4017,7 @@ async function startServer() {
       }
 
       // Standard Event Save
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         let existingEvent;
         if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
           existingEvent = await EventModel.findById(id);
@@ -4042,7 +4195,7 @@ async function startServer() {
       const { permanent } = req.query;
 
       let courseToUpdate;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
           courseToUpdate = await Course.findById(id);
         } else {
@@ -4056,7 +4209,7 @@ async function startServer() {
         // Fallback: If course is in the memory defaults, we can create it in DB as deleted/permanent target
         const templateCourse = inMemoryCourses.find(c => c._id === id || c.slug === id);
         if (templateCourse) {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             const newCourse = { ...templateCourse, deleted: true, createdBy: user._id };
             delete newCourse._id; // Let Mongoose generate _id
             await Course.create(newCourse);
@@ -4083,7 +4236,7 @@ async function startServer() {
       }
 
       if (permanent === 'true') {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           if (mongoose.Types.ObjectId.isValid(courseToUpdate._id)) {
             await Course.findByIdAndDelete(courseToUpdate._id);
           } else {
@@ -4093,7 +4246,7 @@ async function startServer() {
           inMemoryCourses = inMemoryCourses.filter(c => c._id !== courseToUpdate._id && c.slug !== courseToUpdate.slug);
         }
       } else {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           if (mongoose.Types.ObjectId.isValid(courseToUpdate._id)) {
             await Course.findByIdAndUpdate(courseToUpdate._id, { $set: { deleted: true } });
           } else {
@@ -4123,7 +4276,7 @@ async function startServer() {
 
       if (isCourse === 'true') {
         let courseToUpdate;
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
             courseToUpdate = await Course.findById(id);
           } else {
@@ -4137,7 +4290,7 @@ async function startServer() {
           // Fallback: If course is in the memory defaults, we can create it in DB as deleted/permanent target
           const templateCourse = inMemoryCourses.find(c => c._id === id || c.slug === id);
           if (templateCourse) {
-            if (isDbConnected) {
+            if (usePersistentStorage) {
               const newCourse = { ...templateCourse, deleted: true, createdBy: user._id };
               delete newCourse._id; // Let Mongoose generate _id
               await Course.create(newCourse);
@@ -4164,7 +4317,7 @@ async function startServer() {
         }
 
         if (permanent === 'true') {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             if (mongoose.Types.ObjectId.isValid(courseToUpdate._id)) {
               await Course.findByIdAndDelete(courseToUpdate._id);
             } else {
@@ -4174,7 +4327,7 @@ async function startServer() {
             inMemoryCourses = inMemoryCourses.filter(c => c._id !== courseToUpdate._id && c.slug !== courseToUpdate.slug);
           }
         } else {
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             if (mongoose.Types.ObjectId.isValid(courseToUpdate._id)) {
               await Course.findByIdAndUpdate(courseToUpdate._id, { $set: { deleted: true } });
             } else {
@@ -4189,7 +4342,7 @@ async function startServer() {
 
       // Standard Event deletion
       if (permanent === 'true') {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
             await EventModel.findByIdAndDelete(id);
           } else {
@@ -4199,7 +4352,7 @@ async function startServer() {
           inMemoryEvents = inMemoryEvents.filter(e => e._id !== id && e.slug !== id);
         }
       } else {
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           let updatedEvent;
           if (id && id !== 'undefined' && id !== 'null' && mongoose.Types.ObjectId.isValid(id)) {
             updatedEvent = await EventModel.findByIdAndUpdate(id, { $set: { deleted: true } });
@@ -4234,7 +4387,7 @@ async function startServer() {
       // For this full-stack UI, instructors or TAs are also permitted
 
       let list = [];
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         list = await Registration.find({ eventSlug: slug });
       } else {
         list = inMemoryRegistrations.filter(p => p.eventSlug === slug);
@@ -4269,7 +4422,7 @@ async function startServer() {
         isPublished: item.isPublished || false
       }));
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const results = [];
         for (const item of parsedItems) {
           // Check for duplication in this event slug
@@ -4357,7 +4510,7 @@ async function startServer() {
         };
       }).filter(x => x.email);
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const saved = [];
         for (const item of parsedItems) {
           let doc = await Registration.findOne({ eventSlug: slug, email: item.email });
@@ -4395,7 +4548,7 @@ async function startServer() {
       const { id } = req.params;
       const updateData = req.body;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await Registration.findByIdAndUpdate(id, updateData, { new: true });
         if (!updated) return res.status(404).json({ error: 'Participant record not found' });
         return res.json({ success: true, participant: updated });
@@ -4419,7 +4572,7 @@ async function startServer() {
         return res.status(400).json({ error: 'IDs array is required' });
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const objectIds = ids.map((id: string) => {
           if (mongoose.Types.ObjectId.isValid(id)) {
             return new mongoose.Types.ObjectId(id);
@@ -4474,7 +4627,7 @@ async function startServer() {
   apiRouter.delete('/events/:slug/participants/:id', authMiddleware, async (req, res) => {
     try {
       const { id } = req.params;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await Registration.findByIdAndDelete(id);
         return res.json({ success: true });
       } else {
@@ -4491,7 +4644,7 @@ async function startServer() {
       const { slug } = req.params;
       const { publish } = req.body; // true or false
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await Registration.updateMany({ eventSlug: slug }, { isPublished: publish });
       } else {
         inMemoryRegistrations.forEach(p => {
@@ -4512,7 +4665,7 @@ async function startServer() {
       const user = req.user;
 
       let record = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         record = await Registration.findOne({ eventSlug: slug, email: user.email });
       } else {
         record = inMemoryRegistrations.find(p => p.eventSlug === slug && p.email === user.email);
@@ -4532,12 +4685,17 @@ async function startServer() {
       const { slug } = req.params;
       // @ts-ignore
       const user = req.user;
+      const activity=await participationRecord(slug);
+      if(!activity)return res.status(404).json({error:'Course or event not found'});
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         let record = await Registration.findOne({ eventSlug: slug, email: user.email });
         if (!record) {
           return res.status(404).json({ error: 'You are not uploaded as an accepted participant for this event.' });
         }
+        if(record.paymentStatus==='Confirmed')return res.json({success:true,participant:record});
+        const paymentGate=registrationAvailability(activity,record);
+        if(!paymentGate.allowed)return res.status(403).json({error:paymentGate.reason});
         record.amountPaid = record.fee;
         record.paymentStatus = 'Confirmed';
         // @ts-ignore
@@ -4550,6 +4708,9 @@ async function startServer() {
           return res.status(404).json({ error: 'You are not uploaded as an accepted participant for this event.' });
         }
         const record = inMemoryRegistrations[idx];
+        if(record.paymentStatus==='Confirmed')return res.json({success:true,participant:record});
+        const paymentGate=registrationAvailability(activity,record);
+        if(!paymentGate.allowed)return res.status(403).json({error:paymentGate.reason});
         record.amountPaid = record.fee;
         record.paymentStatus = 'Confirmed';
         record.confirmedAt = new Date();
@@ -4567,8 +4728,16 @@ async function startServer() {
       // @ts-ignore
       const user = req.user;
 
+      const activity=await participationRecord(slug);
+      if(!activity)return res.status(404).json({error:'Course or event not found'});
+      const existingParticipant=usePersistentStorage?await Registration.findOne({eventSlug:slug,email:user.email}).lean():inMemoryRegistrations.find(p=>p.eventSlug===slug&&p.email===user.email);
+      if(existingParticipant?.paymentStatus==='Confirmed'&&existingParticipant?.admissionStatus==='Confirmed')return res.json({success:true,participant:existingParticipant});
+      if(getEffectiveStatus(activity)!=='Completed')return res.status(403).json({error:'Materials enrollment is only available after the activity is completed.'});
+      const materialsGate=registrationAvailability(activity.registrationCard?.actionPhases?.length?activity:{...activity,registrationState:undefined},existingParticipant);
+      if(!materialsGate.allowed)return res.status(403).json({error:materialsGate.reason});
+
       let eventFee = 0;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const foundCourse: any = await Course.findOne({ slug });
         if (foundCourse) {
           eventFee = foundCourse.completedFee !== undefined ? foundCourse.completedFee : (foundCourse.fee || 0);
@@ -4593,7 +4762,7 @@ async function startServer() {
       const participantName = user.fullName || user.name || user.email.split('@')[0];
       const participantAffiliation = user.affiliation || 'Student / Fellow';
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         let record = await Registration.findOne({ eventSlug: slug, email: user.email });
         if (record) {
           record.paymentStatus = 'Confirmed';
@@ -4999,7 +5168,8 @@ async function startServer() {
   });
 
   // Cloudinary Secure Image Upload Endpoint (handles base64 dataUrls or remote URLs)
-  app.post('/api/upload-cloudinary', async (req, res) => {
+  app.post('/api/upload-cloudinary', authMiddleware, async (req, res) => {
+    if (!outboundEnabled()) return res.status(403).json({ error: 'External uploads are disabled in development' });
     try {
       const { dataUrl, imageUrl, image } = req.body;
       let fileToUpload = dataUrl || imageUrl || image;
@@ -5151,9 +5321,10 @@ async function startServer() {
   // === Council Announcements API ===
   apiRouter.get('/announcements', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const list = await Announcement.find({ deleted: { $ne: true } });
-        return res.json({ announcements: list });
+        const viewer = await optionalAuth(req);
+        return res.json({ announcements: viewer && ['admin','superadmin'].includes(viewer.role) ? list : list.filter(x => isNoticeVisible(x)) });
       } else {
         const list = inMemoryAnnouncements.filter(a => !a.deleted);
         return res.json({ announcements: list });
@@ -5172,7 +5343,7 @@ async function startServer() {
       }
 
       const annData = req.body;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const ann = await Announcement.create(annData);
         return res.json({ announcement: ann, success: true });
       } else {
@@ -5196,7 +5367,7 @@ async function startServer() {
       const { id } = req.params;
       const annData = req.body;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await Announcement.findByIdAndUpdate(id, annData, { new: true });
         return res.json({ announcement: updated, success: true });
       } else {
@@ -5222,7 +5393,7 @@ async function startServer() {
 
       const { id } = req.params;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await Announcement.findByIdAndUpdate(id, { deleted: true });
         return res.json({ success: true });
       } else {
@@ -5241,9 +5412,10 @@ async function startServer() {
   // === W2M Academy Notifications API ===
   apiRouter.get('/w2m-notifications', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const list = await W2MNotification.find({ deleted: { $ne: true } });
-        return res.json({ notifications: list });
+        const viewer = await optionalAuth(req);
+        return res.json({ notifications: viewer && ['admin','superadmin'].includes(viewer.role) ? list : list.filter(x => isNoticeVisible(x)) });
       } else {
         const list = inMemoryW2MNotifications.filter(n => !n.deleted);
         return res.json({ notifications: list });
@@ -5262,7 +5434,7 @@ async function startServer() {
       }
 
       const notifData = req.body;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const notif = await W2MNotification.create(notifData);
         return res.json({ notification: notif, success: true });
       } else {
@@ -5286,7 +5458,7 @@ async function startServer() {
       const { id } = req.params;
       const notifData = req.body;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await W2MNotification.findByIdAndUpdate(id, notifData, { new: true });
         return res.json({ notification: updated, success: true });
       } else {
@@ -5312,7 +5484,7 @@ async function startServer() {
 
       const { id } = req.params;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await W2MNotification.findByIdAndUpdate(id, { deleted: true });
         return res.json({ success: true });
       } else {
@@ -5334,7 +5506,7 @@ async function startServer() {
       const user = await optionalAuth(req);
       const isPrivileged = user && (user.role === 'admin' || user.role === 'superadmin');
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const query: any = {};
         if (!isPrivileged) {
           query.status = { $ne: 'Draft' };
@@ -5357,7 +5529,7 @@ async function startServer() {
   apiRouter.get('/projects/:slug', async (req, res) => {
     try {
       const { slug } = req.params;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const p = await Project.findOne({ slug });
         if (!p) return res.status(404).json({ error: 'Project not found' });
         return res.json({ project: p });
@@ -5379,12 +5551,12 @@ async function startServer() {
         return res.status(403).json({ error: 'Forbidden: Admin access required' });
       }
 
-      const projectData = req.body;
+      const { storedStatus: _derivedStatus, ...projectData } = req.body;
       if (!projectData.slug && projectData.title) {
         projectData.slug = projectData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const proj = await Project.create(projectData);
         return res.json({ project: proj, success: true });
       } else {
@@ -5406,9 +5578,9 @@ async function startServer() {
       }
 
       const { slug } = req.params;
-      const projectData = req.body;
+      const { storedStatus: _derivedStatus, ...projectData } = req.body;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await Project.findOneAndUpdate({ slug }, projectData, { new: true });
         if (!updated) return res.status(404).json({ error: 'Project not found' });
         return res.json({ project: updated, success: true });
@@ -5435,7 +5607,7 @@ async function startServer() {
 
       const { slug } = req.params;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         // Soft delete
         await Project.findOneAndUpdate({ slug }, { deleted: true });
         return res.json({ success: true });
@@ -5456,7 +5628,7 @@ async function startServer() {
   apiRouter.post('/job-applications', async (req, res) => {
     try {
       const appData = req.body;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const application = await JobApplication.create(appData);
         return res.json({ application, success: true });
       } else {
@@ -5472,7 +5644,7 @@ async function startServer() {
   // === Centres API ===
   apiRouter.get('/centres', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const list = await CentreModel.find({ deleted: { $ne: true } });
         return res.json({ centres: list });
       } else {
@@ -5487,7 +5659,7 @@ async function startServer() {
   apiRouter.get('/centres/:slug', async (req, res) => {
     try {
       const { slug } = req.params;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const c = await CentreModel.findOne({ slug });
         if (!c) return res.status(404).json({ error: 'Centre not found' });
         return res.json({ centre: c });
@@ -5514,7 +5686,7 @@ async function startServer() {
         centreData.slug = centreData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const c = await CentreModel.create(centreData);
         return res.json({ centre: c, success: true });
       } else {
@@ -5538,7 +5710,7 @@ async function startServer() {
       const { slug } = req.params;
       const centreData = req.body;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await CentreModel.findOneAndUpdate({ slug }, centreData, { new: true });
         if (!updated) return res.status(404).json({ error: 'Centre not found' });
         return res.json({ centre: updated, success: true });
@@ -5565,7 +5737,7 @@ async function startServer() {
 
       const { slug } = req.params;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await CentreModel.findOneAndUpdate({ slug }, { deleted: true });
         return res.json({ success: true });
       } else {
@@ -5585,7 +5757,7 @@ async function startServer() {
   // === People (Staff/Board/RAB) API ===
   apiRouter.get('/people', async (req, res) => {
     try {
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const query: any = { deleted: { $ne: true } };
         const list = await PersonModel.find(query);
         return res.json({ people: list });
@@ -5601,7 +5773,7 @@ async function startServer() {
   apiRouter.get('/people/:slug', async (req, res) => {
     try {
       const { slug } = req.params;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const p = await PersonModel.findOne({ slug });
         if (!p) return res.status(404).json({ error: 'Person profile not found' });
         return res.json({ person: p });
@@ -5628,7 +5800,7 @@ async function startServer() {
         personData.slug = personData.name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const p = await PersonModel.create(personData);
         return res.json({ person: p, success: true });
       } else {
@@ -5650,7 +5822,7 @@ async function startServer() {
 
       // Access control: admin, superadmin, or the person owner (matching email or slug)
       let targetPerson: any = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         targetPerson = await PersonModel.findOne({ slug });
       } else {
         targetPerson = inMemoryPeople.find(p => p.slug === slug);
@@ -5672,7 +5844,7 @@ async function startServer() {
         delete personData.boardMemberType;
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const updated = await PersonModel.findOneAndUpdate({ slug }, personData, { new: true });
         return res.json({ person: updated, success: true });
       } else {
@@ -5698,7 +5870,7 @@ async function startServer() {
 
       const { slug } = req.params;
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await PersonModel.findOneAndUpdate({ slug }, { deleted: true });
         return res.json({ success: true });
       } else {
@@ -5727,7 +5899,7 @@ async function startServer() {
       const user = req.user;
       
       let assignments = [];
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const query: any = { courseSlug };
         if (moduleId) query.moduleId = moduleId;
         assignments = await Assignment.find(query).lean();
@@ -5739,7 +5911,7 @@ async function startServer() {
       const isPrivileged = user.role === 'superadmin' || user.role === 'admin';
       
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === courseSlug);
@@ -5752,7 +5924,7 @@ async function startServer() {
       const assignmentsWithSubmissions = await Promise.all(assignments.map(async (assignment: any) => {
         let submission = null;
         const assignmentIdStr = assignment._id.toString();
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           submission = await AssignmentSubmission.findOne({ 
             assignmentId: assignment._id, 
             studentId: user._id 
@@ -5807,7 +5979,7 @@ async function startServer() {
       const user = req.user;
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === courseSlug);
@@ -5833,7 +6005,7 @@ async function startServer() {
       const totalMarks = sanitizedQuestions.reduce((sum: number, q: any) => sum + q.marks, 0);
 
       let assignment;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         assignment = await Assignment.create({
           courseSlug,
           moduleId,
@@ -5878,7 +6050,7 @@ async function startServer() {
       const user = req.user;
 
       let assignment = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         assignment = await Assignment.findById(id);
       } else {
         assignment = inMemoryAssignments.find(a => a._id.toString() === id);
@@ -5886,7 +6058,7 @@ async function startServer() {
       if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: assignment.courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === assignment.courseSlug);
@@ -5927,7 +6099,7 @@ async function startServer() {
       }
 
       let savedAssignment;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         savedAssignment = await Assignment.findByIdAndUpdate(id, { $set: updatedFields }, { new: true }).lean();
       } else {
         const idx = inMemoryAssignments.findIndex(a => a._id.toString() === id);
@@ -5937,7 +6109,7 @@ async function startServer() {
 
       if (reGradeRequired && assignment.type === 'objective') {
         let submissions = [];
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           submissions = await AssignmentSubmission.find({ assignmentId: id });
         } else {
           submissions = inMemorySubmissions.filter(s => s.assignmentId.toString() === id);
@@ -5959,7 +6131,7 @@ async function startServer() {
 
           const totalScore = updatedAnswers.reduce((sum: number, a: any) => sum + (a.marksObtained || 0), 0);
 
-          if (isDbConnected) {
+          if (usePersistentStorage) {
             await AssignmentSubmission.findByIdAndUpdate(sub._id, {
               $set: { answers: updatedAnswers, totalScore, status: 'graded' }
             });
@@ -5988,7 +6160,7 @@ async function startServer() {
       const user = req.user;
 
       let assignment = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         assignment = await Assignment.findById(id);
       } else {
         assignment = inMemoryAssignments.find(a => a._id.toString() === id);
@@ -5996,7 +6168,7 @@ async function startServer() {
       if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: assignment.courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === assignment.courseSlug);
@@ -6010,7 +6182,7 @@ async function startServer() {
         return res.status(403).json({ error: 'Forbidden: Instructor or TA access required' });
       }
 
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         await Assignment.findByIdAndDelete(id);
         await AssignmentSubmission.deleteMany({ assignmentId: id });
       } else {
@@ -6033,7 +6205,7 @@ async function startServer() {
       const user = req.user;
 
       let assignment = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         assignment = await Assignment.findById(id);
       } else {
         assignment = inMemoryAssignments.find(a => a._id.toString() === id);
@@ -6041,7 +6213,7 @@ async function startServer() {
       if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
 
       let existingSub = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         existingSub = await AssignmentSubmission.findOne({ assignmentId: id, studentId: user._id });
       } else {
         existingSub = inMemorySubmissions.find(s => s.assignmentId.toString() === id && s.studentId.toString() === user._id.toString());
@@ -6082,7 +6254,7 @@ async function startServer() {
       const status = isObjective ? 'graded' : 'submitted';
 
       let submission;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         if (existingSub) {
           submission = await AssignmentSubmission.findByIdAndUpdate(existingSub._id, {
             $set: {
@@ -6150,7 +6322,7 @@ async function startServer() {
       const user = req.user;
 
       let assignment = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         assignment = await Assignment.findById(id);
       } else {
         assignment = inMemoryAssignments.find(a => a._id.toString() === id);
@@ -6158,7 +6330,7 @@ async function startServer() {
       if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: assignment.courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === assignment.courseSlug);
@@ -6173,7 +6345,7 @@ async function startServer() {
       }
 
       let submissions = [];
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         submissions = await AssignmentSubmission.find({ assignmentId: id }).lean();
       } else {
         submissions = inMemorySubmissions.filter(s => s.assignmentId.toString() === id);
@@ -6194,7 +6366,7 @@ async function startServer() {
       const user = req.user;
 
       let submission = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         submission = await AssignmentSubmission.findById(submissionId);
       } else {
         submission = inMemorySubmissions.find(s => s._id.toString() === submissionId);
@@ -6202,7 +6374,7 @@ async function startServer() {
       if (!submission) return res.status(404).json({ error: 'Submission not found' });
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: submission.courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === submission.courseSlug);
@@ -6231,7 +6403,7 @@ async function startServer() {
       const totalScore = updatedAnswers.reduce((sum: number, ans: any) => sum + (ans.marksObtained || 0), 0);
 
       let savedSubmission;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         savedSubmission = await AssignmentSubmission.findByIdAndUpdate(submissionId, {
           $set: {
             answers: updatedAnswers,
@@ -6276,7 +6448,7 @@ async function startServer() {
       const qType = type === 'subjective' ? 'subjective' : 'objective';
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === courseSlug);
@@ -6413,7 +6585,7 @@ async function startServer() {
       
       if (assignmentId) {
         let assignment = null;
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           assignment = await Assignment.findById(assignmentId);
         } else {
           assignment = inMemoryAssignments.find(a => a._id.toString() === assignmentId);
@@ -6645,7 +6817,7 @@ async function startServer() {
           createdBy: 'AI System',
           createdAt: new Date()
         };
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           const createdObj = await GlossaryTerm.create(newTerm);
           savedTerms.push(createdObj.toObject());
         } else {
@@ -6669,7 +6841,7 @@ async function startServer() {
       const { moduleId, materialId } = req.query;
 
       let stored = [];
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         const query: any = { courseSlug: slug };
         if (moduleId) query.moduleId = moduleId;
         if (materialId) query.materialId = materialId;
@@ -6686,7 +6858,7 @@ async function startServer() {
       // If less than 3 terms, let's auto-generate to populate the glossary with authentic terminology
       if (stored.length < 3) {
         let courseDoc = null;
-        if (isDbConnected) {
+        if (usePersistentStorage) {
           courseDoc = await Course.findOne({ slug });
         } else {
           courseDoc = inMemoryCourses.find(c => c.slug === slug);
@@ -6726,7 +6898,7 @@ async function startServer() {
       };
 
       let saved;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         saved = await GlossaryTerm.create(newTerm);
         saved = saved.toObject();
       } else {
@@ -6981,7 +7153,7 @@ async function startServer() {
       }
 
       let courseDoc = null;
-      if (isDbConnected) {
+      if (usePersistentStorage) {
         courseDoc = await Course.findOne({ slug: courseSlug });
       } else {
         courseDoc = inMemoryCourses.find(c => c.slug === courseSlug);
@@ -7172,7 +7344,7 @@ async function startServer() {
                         type: 'GOOGLE_OAUTH_SUCCESS',
                         accessToken: accessToken,
                         email: realEmail
-                      }, '*');
+                      }, ${JSON.stringify(hosting.app)});
                       window.close();
                     } else {
                       document.body.innerHTML = '<h2>Authorization Success! Real Account: ' + realEmail + '. You can close this window now.</h2>';
@@ -7185,7 +7357,7 @@ async function startServer() {
                         type: 'GOOGLE_OAUTH_SUCCESS',
                         accessToken: accessToken,
                         email: 'authorized-google-user@gmail.com'
-                      }, '*');
+                      }, ${JSON.stringify(hosting.app)});
                       window.close();
                     } else {
                       document.body.innerHTML = '<h2>Authorization Success! You can close this window now.</h2>';
@@ -7197,7 +7369,7 @@ async function startServer() {
                     window.opener.postMessage({
                       type: 'GOOGLE_OAUTH_FAILURE',
                       error: errorDesc
-                    }, '*');
+                    }, ${JSON.stringify(hosting.app)});
                   }
                   document.body.innerHTML = '<h2 style="color: #ef4444;">Error: No token received</h2><p>' + errorDesc + '</p>';
                 }
@@ -7209,7 +7381,7 @@ async function startServer() {
                     window.opener.postMessage({
                       type: 'GOOGLE_OAUTH_FAILURE',
                       error: error
-                    }, '*');
+                    }, ${JSON.stringify(hosting.app)});
                   }
                   document.body.innerHTML = '<h2 style="color: #ef4444;">Authorization Failed</h2><p>' + error + '</p>';
                 } else {
@@ -7553,25 +7725,32 @@ async function startServer() {
   app.use('/api/lms', apiRouter);
   app.use('/api', apiRouter);
 
+  app.use('/api', (_req, res) => res.status(404).json({ error: 'API endpoint not found' }));
+
   // Vite middleware for development
-  if (process.env.NODE_ENV === "development") {
+  if (hosting.serveFrontend && process.env.NODE_ENV === "development") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
+  } else if (hosting.serveFrontend) {
     const distPath = path.join(process.cwd(), 'dist');
+    // Keep the existing release path without exposing the bundled API source as a static asset.
+    app.use((req, res, next) => {
+      try { if (path.posix.normalize(decodeURIComponent(req.path)) === '/server.cjs') return res.sendStatus(404); } catch { return res.sendStatus(400); }
+      next();
+    });
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, process.env.HOST || "127.0.0.1", () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
 }
 
-startServer();
+startServer().catch(() => { console.error('Startup failed. Check server configuration.'); process.exitCode = 1; });

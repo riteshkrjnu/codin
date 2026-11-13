@@ -1,0 +1,57 @@
+/* Responsive disclosure navigation. No changes to routing or content permissions. */
+.codin-site .site-header { position: relative; z-index: 40; flex-wrap: wrap; gap: 1rem; }
+.codin-site .site-navigation { flex: 1; }
+.codin-site .restored-navigation { display: flex; align-items: center; justify-content: center; gap: 1.1rem; }
+.codin-site .restored-navigation > a, .codin-site .navigation-item > button { white-space: nowrap; font-size: .8rem; }
+.codin-site .navigation-item { position: relative; }
+.codin-site .navigation-item > button { display: flex; align-items: center; gap: .4rem; padding: .7rem 0; background: none; border: 0; color: inherit; }
+.codin-site .navigation-item > button[aria-expanded=true] { color: var(--accent); }
+.codin-site .navigation-panel { position: absolute; top: 100%; left: 0; width: min(380px, 88vw); max-height: 75vh; overflow: auto; padding: 1.25rem; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 18px 45px #142d2520; }
+.codin-site .navigation-panel[hidden] { display: none; }
+.codin-site .navigation-item:last-child .navigation-panel { left: auto; right: 0; }
+.codin-site .navigation-panel a { display: block; padding: .65rem; white-space: normal; }
+.codin-site .navigation-panel a:hover { background: var(--wash); text-decoration: none; }
+.codin-site .navigation-panel a:focus-visible { outline-offset: 0; }
+.codin-site .navigation-panel strong { font-size: .85rem; font-weight: 600; }
+.codin-site .navigation-panel small { display: block; margin-top: .2rem; font-size: .74rem; opacity: .8; }
+.codin-site .navigation-overview { border-bottom: 1px solid var(--line); margin-bottom: .65rem; font-weight: 600; }
+.codin-site .navigation-mega { position: static; }
+.codin-site .navigation-mega .navigation-panel { width: auto; left: 4vw; right: 4vw; top: calc(100% - 1px); }
+.codin-site .navigation-mega .navigation-groups { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.5rem; }
+.codin-site .navigation-groups h2 { font: 600 .8rem var(--font-sans); margin: .5rem .65rem; color: var(--accent); }
+.codin-site .navigation-groups p { font-size: .8rem; padding: .65rem; }
+.codin-site .navigation-toggle { display: none; }
+@media (max-width: 1150px) {
+  .codin-site .site-navigation { flex: 0; margin-left: auto; order: 3; }
+  .codin-site .header-tools { margin-left: auto; }
+  .codin-site .navigation-toggle { display: block; padding: .45rem .7rem; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font-size: .8rem; }
+  .codin-site .site-header .restored-navigation { display: none; position: absolute; left: 0; right: 0; top: 100%; background: var(--paper); border-bottom: 1px solid var(--line); max-height: 80dvh; overflow: auto; white-space: normal; padding: 1rem 4vw; }
+  .codin-site .site-header .restored-navigation.navigation-open { display: block; }
+  .codin-site .restored-navigation > a, .codin-site .navigation-item > button { display: flex; width: 100%; padding: .8rem .25rem; justify-content: space-between; }
+  .codin-site .navigation-panel, .codin-site .navigation-mega .navigation-panel { position: static; width: 100%; max-height: none; box-shadow: none; padding: .7rem; }
+  .codin-site .navigation-mega .navigation-groups { grid-template-columns: 1fr; gap: .5rem; }
+}
+@media (max-width: 480px) {
+  .codin-site .site-header { gap: .5rem; }
+  .codin-site .site-header .brand { flex: 1 1 55%; }
+  .codin-site .header-tools { order: 4; flex: 1 1 100%; justify-content: flex-end; }
+}
+
+/* A quieter masthead with a distinct navigation rail and clear active state. */
+.codin-site .site-header{padding:18px 3vw;background:var(--paper);border-bottom:1px solid var(--line);box-shadow:0 4px 20px #142d2506;gap:18px}
+.codin-site .site-header .brand{gap:10px;flex-shrink:0}.codin-site .site-header .brand img{width:42px;height:42px}.codin-site .site-header .brand>span{font-size:1.55rem}.codin-site .site-header .brand small{font-size:8px;line-height:1.5;max-width:180px}
+.codin-site .restored-navigation{gap:3px;border:1px solid var(--line);border-radius:28px;padding:4px;background:var(--wash);width:max-content;max-width:100%;margin:auto}
+.codin-site .restored-navigation>a,.codin-site .navigation-item>button{padding:9px 11px;font-size:12px;border-radius:20px;transition:background .2s,color .2s}
+.codin-site .restored-navigation>a[aria-current=page]{border:0;background:var(--ink);color:var(--paper);text-decoration:none;font-weight:600}
+.codin-site .restored-navigation>a:hover,.codin-site .navigation-item>button:hover,.codin-site .navigation-item>button[aria-expanded=true]{background:var(--paper);color:var(--ink);text-decoration:none}
+.codin-site .navigation-item>button>span{font-size:13px;transition:transform .2s}.codin-site .navigation-item>button[aria-expanded=true]>span{transform:rotate(180deg)}
+.codin-site .navigation-panel{border-radius:12px;margin-top:10px;padding:14px;box-shadow:0 16px 40px #142d2524}.codin-site .navigation-panel a{border-radius:7px}
+.codin-site .navigation-mega .navigation-panel{margin-top:0;border-radius:0 0 14px 14px}
+.codin-site .header-tools{gap:7px}.codin-site .header-tools>button,.codin-site .account-menu>summary{border:1px solid var(--line);border-radius:20px;padding:8px 12px;background:transparent;color:var(--ink);font-size:11px;line-height:1.5}
+.codin-site .header-tools>.sign-in{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.codin-site .account-menu>summary{cursor:pointer}.codin-site .account-menu[open]>summary{background:var(--wash)}.codin-site .account-menu>div{border-radius:12px;padding:10px;box-shadow:0 16px 40px #142d2524}.codin-site .account-menu>div>a,.codin-site .account-menu>div>button{border-radius:6px;padding:10px 12px;font-size:12px}
+@media(max-width:1250px) and (min-width:1151px){.codin-site .restored-navigation>a,.codin-site .navigation-item>button{padding-inline:8px;font-size:11px}.codin-site .site-header{gap:10px;padding-inline:2vw}.codin-site .site-header .brand small{max-width:145px}}
+@media(max-width:1150px){.codin-site .site-header .restored-navigation{margin:0;border-radius:0 0 14px 14px;width:auto;padding:12px 4vw;border-top:1px solid var(--line)}.codin-site .navigation-toggle{border-radius:20px;padding:8px 14px}.codin-site .restored-navigation>a,.codin-site .navigation-item>button{border-radius:7px}.codin-site .navigation-panel{margin-top:4px;border-radius:7px}}
+@media(prefers-reduced-motion:reduce){.codin-site .restored-navigation>a,.codin-site .navigation-item>button,.codin-site .navigation-item>button>span{transition:none}}
+
+.codin-site .navigation-item>button[aria-current=true]{background:var(--ink);color:var(--paper)}.codin-site .navigation-panel a[aria-current=page]{background:var(--wash);box-shadow:inset 3px 0 0 var(--accent)}

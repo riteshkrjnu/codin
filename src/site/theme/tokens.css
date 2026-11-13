@@ -1,0 +1,14 @@
+/* Brand tokens shared by Tailwind and the presentation components. */
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "DM Serif Display", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-paper: #faf8f2;
+  --color-ink: #233e34;
+  --color-brand-blue: #365d65;
+  --color-brand-orange: #a83e29;
+  --color-brand-acid: #dbe2ce;
+  --color-line: #d5d9ce;
+  --color-wash: #edf0e7;
+}

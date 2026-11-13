@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+backups/
+.tools/
+.env.production
+*.archive
+*.archive.gz
+playwright-report/
+test-results/
